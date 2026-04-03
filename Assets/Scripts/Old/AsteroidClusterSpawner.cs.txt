@@ -1,0 +1,190 @@
+using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
+
+public class AsteroidClusterSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private HexGridGenerator hexGrid;
+
+    [Header("Prefab")]
+    [SerializeField] private GameObject asteroidPrefab;
+
+    [Header("Clusters")]
+    [SerializeField] private int clusterCount = 3;
+    [SerializeField] private int minClusterSize = 3;
+    [SerializeField] private int maxClusterSize = 8;
+
+    [Header("Placement Rules")]
+    [SerializeField] private int safeRowsFromTopAndBottom = 2;
+
+    [Tooltip("Чем больше, тем чаще к боковым краям (q=0 или q=width-1). 0 = без предпочтения.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float preferSideEdges = 0.7f;
+
+    [SerializeField] private bool spawnOnStart = true;
+
+    private void Start()
+    {
+        if (spawnOnStart)
+            SpawnClusters();
+    }
+
+    [ContextMenu("Spawn Clusters")]
+    public void SpawnClusters()
+    {
+        if (hexGrid == null || asteroidPrefab == null)
+        {
+            Debug.LogError("AsteroidClusterSpawner: missing references.");
+            return;
+        }
+
+        var cells = hexGrid.Grid.Values.Where(c => c != null).ToList();
+        if (cells.Count == 0)
+        {
+            Debug.LogError("AsteroidClusterSpawner: grid empty.");
+            return;
+        }
+
+        int width = hexGrid.Width;
+        int height = hexGrid.Height;
+
+        // кандидаты: не safe-rows, свободные
+        List<HexCell> candidates = cells.Where(cell =>
+        {
+            int r = cell.coordinates.r;
+            if (r < safeRowsFromTopAndBottom) return false;
+            if (r > (height - 1 - safeRowsFromTopAndBottom)) return false;
+
+            if (cell.occupiedUnit != null) return false;
+            if (cell.occupiedByObject) return false;
+
+            return cell.isWalkable;
+        }).ToList();
+
+        if (candidates.Count == 0)
+        {
+            Debug.LogWarning("AsteroidClusterSpawner: no candidates.");
+            return;
+        }
+
+        for (int i = 0; i < clusterCount; i++)
+        {
+            HexCell seed = PickSeed(candidates, width);
+            if (seed == null) break;
+
+            int clusterSize = Random.Range(minClusterSize, maxClusterSize + 1);
+            SpawnClusterFromSeed(seed, clusterSize, candidates);
+        }
+    }
+
+    private HexCell PickSeed(List<HexCell> candidates, int width)
+    {
+        if (candidates.Count == 0) return null;
+
+        if (preferSideEdges <= 0f)
+            return candidates[Random.Range(0, candidates.Count)];
+
+        float total = 0f;
+        var weights = new float[candidates.Count];
+
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            int q = candidates[i].coordinates.q;
+            int distToSide = Mathf.Min(q, (width - 1) - q);
+
+            // ближе к бокам => больше вес
+            float edgeFactor = 1f - Mathf.Clamp01(distToSide / Mathf.Max(1f, width * 0.5f));
+            float w = Mathf.Lerp(1f, 1f + edgeFactor * 5f, preferSideEdges);
+
+            weights[i] = w;
+            total += w;
+        }
+
+        float roll = Random.value * total;
+        float acc = 0f;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            acc += weights[i];
+            if (roll <= acc) return candidates[i];
+        }
+
+        return candidates[candidates.Count - 1];
+    }
+
+    private void SpawnClusterFromSeed(HexCell seed, int size, List<HexCell> candidates)
+    {
+        if (seed == null) return;
+
+        Queue<HexCell> frontier = new Queue<HexCell>();
+        HashSet<HexCell> used = new HashSet<HexCell>();
+
+        frontier.Enqueue(seed);
+        used.Add(seed);
+
+        int placed = 0;
+
+        while (frontier.Count > 0 && placed < size)
+        {
+            HexCell current = frontier.Dequeue();
+
+            if (!candidates.Contains(current)) continue;
+
+            PlaceAsteroid(current);
+            candidates.Remove(current);
+            placed++;
+
+            var neighbors = GetNeighborsAxial(current);
+            neighbors = neighbors.OrderBy(_ => Random.value).ToList();
+
+            foreach (var neigh in neighbors)
+            {
+                if (neigh == null) continue;
+                if (used.Contains(neigh)) continue;
+                if (!candidates.Contains(neigh)) continue;
+
+                used.Add(neigh);
+                frontier.Enqueue(neigh);
+
+                if (placed + frontier.Count >= size) break;
+            }
+        }
+    }
+
+    private List<HexCell> GetNeighborsAxial(HexCell cell)
+    {
+        // axial neighbors
+        HexCoordinates[] dirs = new[]
+        {
+            new HexCoordinates(+1, 0),
+            new HexCoordinates(+1, -1),
+            new HexCoordinates(0, -1),
+            new HexCoordinates(-1, 0),
+            new HexCoordinates(-1, +1),
+            new HexCoordinates(0, +1),
+        };
+
+        var result = new List<HexCell>(6);
+
+        foreach (var d in dirs)
+        {
+            HexCoordinates coord = new HexCoordinates(cell.coordinates.q + d.q, cell.coordinates.r + d.r);
+
+            if (hexGrid != null && hexGrid.TryGetCell(coord, out HexCell neighbor) && neighbor != null)
+            {
+                result.Add(neighbor);
+            }
+        }
+
+        return result;
+    }
+
+    private void PlaceAsteroid(HexCell cell)
+    {
+        Instantiate(asteroidPrefab, cell.transform.position, Quaternion.identity, transform);
+
+        // помечаем клетку как занятую объектом и блокирующую движение
+        cell.occupiedByObject = true;
+        cell.ObjectBlocksMovement = true;
+    }
+}

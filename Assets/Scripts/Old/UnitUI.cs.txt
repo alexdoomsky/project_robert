@@ -1,0 +1,258 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro; // Если используете TextMeshPro
+
+public class UnitUI : MonoBehaviour
+{
+    [Header("Health Bar")]
+    [SerializeField] private GameObject healthPanel;
+    [SerializeField] private Image healthFill;
+    [SerializeField] private TMP_Text healthText; // или Text если используете стандартный UI
+
+    [Header("Energy Bar")]
+    [SerializeField] private GameObject energyPanel;
+    [SerializeField] private Image energyFill;
+    [SerializeField] private TMP_Text energyText; // или Text если используете стандартный UI
+
+    // НОВОЕ: Панель эффектов
+    [Header("Effects Panel")]
+    [SerializeField] private GameObject effectsPanel;
+    [SerializeField] private Transform effectsContainer; // Родительский объект для иконок эффектов
+
+    [Header("Settings")]
+    [SerializeField] private bool showTextValues = true;
+    [SerializeField] private bool alwaysVisible = false;
+    [SerializeField] private float hideDelay = 2f;
+
+    private Unit targetUnit;
+    private CanvasGroup canvasGroup;
+    private float lastChangeTime;
+    private bool isVisible = true;
+
+    void Start()
+    {
+        canvasGroup = GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+
+        // Ищем юнит в родителе
+        targetUnit = GetComponentInParent<Unit>();
+        if (targetUnit == null)
+        {
+            Debug.LogError("UnitUI: No Unit component found in parent!");
+            return;
+        }
+
+        // Подписываемся на события юнита
+        targetUnit.OnHealthChanged += UpdateHealthBar;
+        targetUnit.OnEnergyChanged += UpdateEnergyBar;
+        targetUnit.OnUnitDied += OnUnitDied;
+        // НОВОЕ: Подписываемся на события эффектов (исправленная сигнатура)
+        targetUnit.OnEffectAdded += OnEffectAdded;
+        targetUnit.OnEffectRemoved += OnEffectRemoved;
+
+        // Инициализируем бары
+        UpdateHealthBar(targetUnit.GetCurrentHealth(), targetUnit.maxHealth, targetUnit.GetCurrentShieldHP());
+        UpdateEnergyBar(targetUnit.GetCurrentEnergy(), targetUnit.maxEnergy);
+
+        // Если у юнита нет энергии, скрываем энергобар
+        if (targetUnit.maxEnergy == 0 && energyPanel != null)
+        {
+            energyPanel.SetActive(false);
+        }
+
+        // НОВОЕ: Инициализируем панель эффектов
+        if (effectsPanel != null)
+        {
+            effectsPanel.SetActive(false);
+        }
+
+        // Скрываем UI если не всегда видимый
+        if (!alwaysVisible)
+        {
+            HideUI();
+        }
+    }
+
+    void Update()
+    {
+        // Автоматическое скрытие UI через некоторое время после изменений
+        if (!alwaysVisible && isVisible && Time.time - lastChangeTime > hideDelay)
+        {
+            HideUI();
+        }
+    }
+
+    void UpdateHealthBar(int currentHealth, int maxHealth, int shieldHP)
+    {
+        if (healthFill != null)
+        {
+            float fillAmount = (float)currentHealth / maxHealth;
+            healthFill.fillAmount = fillAmount;
+
+            // Меняем цвет в зависимости от уровня здоровья
+            if (fillAmount > 0.6f)
+                healthFill.color = Color.green;
+            else if (fillAmount > 0.3f)
+                healthFill.color = Color.yellow;
+            else
+                healthFill.color = Color.red;
+        }
+
+        if (healthText != null && showTextValues)
+        {
+            string shieldText = shieldHP > 0 ? $" (+{shieldHP})" : "";
+            healthText.text = $"{currentHealth}/{maxHealth}{shieldText}";
+        }
+
+        ShowUI();
+        lastChangeTime = Time.time;
+    }
+
+    void UpdateEnergyBar(int currentEnergy, int maxEnergy)
+    {
+        // Если максимальная энергия 0, ничего не делаем
+        if (maxEnergy == 0) return;
+
+        if (energyFill != null)
+        {
+            energyFill.fillAmount = (float)currentEnergy / maxEnergy;
+
+            // Меняем цвет энергии
+            if (energyFill.fillAmount > 0.5f)
+                energyFill.color = Color.blue;
+            else
+                energyFill.color = Color.cyan;
+        }
+
+        if (energyText != null && showTextValues)
+        {
+            energyText.text = $"{currentEnergy}/{maxEnergy}";
+        }
+
+        ShowUI();
+        lastChangeTime = Time.time;
+    }
+
+    // НОВОЕ: Обработка добавления эффекта (исправленная сигнатура)
+    void OnEffectAdded(string effectId, Sprite icon, Color panelColor, float duration, int turns)
+    {
+        if (effectsPanel != null)
+        {
+            effectsPanel.SetActive(true);
+        }
+
+        // Здесь можно создать UI элемент для эффекта
+        // Например, добавить иконку в effectsContainer
+        Debug.Log($"Effect added: {effectId}, Duration: {duration}, Turns: {turns}");
+
+        // Создаем UI элемент для эффекта
+        CreateEffectUI(effectId, icon, panelColor, duration, turns);
+    }
+
+    // НОВОЕ: Создание UI элемента для эффекта
+    void CreateEffectUI(string effectId, Sprite icon, Color panelColor, float duration, int turns)
+    {
+        if (effectsContainer == null || icon == null) return;
+
+        // Создаем новый GameObject для иконки эффекта
+        GameObject effectIcon = new GameObject($"EffectIcon_{effectId}");
+        effectIcon.transform.SetParent(effectsContainer, false);
+
+        // Добавляем Image компонент
+        Image image = effectIcon.AddComponent<Image>();
+        image.sprite = icon;
+        image.color = Color.white;
+
+        // Настраиваем размер
+        RectTransform rectTransform = effectIcon.GetComponent<RectTransform>();
+        rectTransform.sizeDelta = new Vector2(30, 30);
+
+        // Можно добавить Tooltip или другую информацию
+        Debug.Log($"Created UI for effect: {effectId}");
+    }
+
+    // НОВОЕ: Обработка удаления эффекта
+    void OnEffectRemoved(string effectId)
+    {
+        // Здесь можно удалить UI элемент эффекта
+        Debug.Log($"Effect removed: {effectId}");
+
+        // Удаляем UI элемент эффекта
+        RemoveEffectUI(effectId);
+
+        // Проверяем, остались ли еще эффекты
+        // Если нет, скрываем панель эффектов
+        if (effectsContainer != null && effectsContainer.childCount == 0)
+        {
+            if (effectsPanel != null)
+            {
+                effectsPanel.SetActive(false);
+            }
+        }
+    }
+
+    // НОВОЕ: Удаление UI элемента эффекта
+    void RemoveEffectUI(string effectId)
+    {
+        if (effectsContainer == null) return;
+
+        // Ищем GameObject с нужным именем
+        string effectIconName = $"EffectIcon_{effectId}";
+        Transform effectTransform = effectsContainer.Find(effectIconName);
+
+        if (effectTransform != null)
+        {
+            Destroy(effectTransform.gameObject);
+        }
+    }
+
+    void OnUnitDied(Unit unit)
+    {
+        // Можно добавить анимацию смерти или скрыть UI
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0.5f;
+        }
+    }
+
+    void ShowUI()
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 1f;
+            isVisible = true;
+        }
+    }
+
+    void HideUI()
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0.3f; // Полупрозрачный, но видимый
+            isVisible = false;
+        }
+    }
+
+    // Методы для ручного управления видимостью
+    public void SetVisible(bool visible)
+    {
+        if (visible)
+            ShowUI();
+        else
+            HideUI();
+    }
+
+    // При уничтожении объекта отписываемся от событий
+    void OnDestroy()
+    {
+        if (targetUnit != null)
+        {
+            targetUnit.OnHealthChanged -= UpdateHealthBar;
+            targetUnit.OnEnergyChanged -= UpdateEnergyBar;
+            targetUnit.OnUnitDied -= OnUnitDied;
+            targetUnit.OnEffectAdded -= OnEffectAdded;
+            targetUnit.OnEffectRemoved -= OnEffectRemoved;
+        }
+    }
+}

@@ -1,0 +1,1974 @@
+using UnityEngine;
+using System.Collections.Generic;
+using System.Collections;
+using TMPro;
+using UnityEngine.UI;
+
+public class Unit : MonoBehaviour
+{
+    // Enum для типов уникальных способностей
+    public enum SpecialAbilityType
+    {
+        None = 0,
+        ArtilleryStrike = 1,    // Артиллерийский удар
+        ShieldBarrier = 2,      // Защитный барьер
+        MedicHeal = 3,          // Лечение
+        Teleport = 4,           // Телепортация
+        Grenade = 5,            // Граната
+        SmokeScreen = 6,        // Дымовая завеса
+        Berserk = 7,            // Берсерк
+        ReconScan = 8,          // Разведка
+        EMP = 9,                // ЭМИ-импульс
+        Custom1 = 10,           // Кастомная способность 1
+        Custom2 = 11,           // Кастомная способность 2
+        Custom3 = 12,           // Кастомная способность 3
+        Charge = 13             // Рывок (новая способность)
+    }
+
+    [Header("Movement Settings")]
+    public int maxMovementPoints = 5;
+    [Range(1f, 20f)] public float movementSpeed = 5f;
+    [Range(1f, 10f)] public float rotationSpeed = 5f;
+    public bool pointyTopGrid = true;
+
+    [Header("Movement Curve")]
+    public AnimationCurve accelerationCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    public float accelerationTime = 0.3f;
+    public float decelerationTime = 0.2f;
+
+    [Header("Combat Stats")]
+    public int maxHealth = 100;
+    public int maxEnergy = 50;
+    public int baseDamage = 10;
+    public float attackRange = 1.5f;
+    public int energyRegenPerTurn = 5;
+    [Range(0, 100)] public int dodgeChance = 0; // Шанс уворота в процентах
+
+    [Header("Abilities")]
+    [SerializeField] private bool hasChargeAbility = false;
+    [SerializeField] private bool hasSpecialAbility = false;
+    [SerializeField] private SpecialAbilityType specialAbilityType = SpecialAbilityType.None;
+
+    [Header("Charge Ability Settings")]
+    [Tooltip("Множитель скорости рывка")]
+    [Range(1f, 3f)] public float chargeSpeedMultiplier = 2f;
+    [Tooltip("Множитель очков движения для рывка")]
+    [Range(1, 3)] public int chargeMovementMultiplier = 2;
+    [Tooltip("Стоимость энергии для рывка")]
+    [SerializeField] private int chargeEnergyCost = 10;
+    [Tooltip("Кулдаун рывка в ходах")]
+    [SerializeField] private float chargeCooldown = 0;
+
+    // НОВОЕ: Ограничение рывков за бой
+    [Header("Charge Limits")]
+    [Tooltip("Максимальное количество рывков за бой. 0 = без ограничений")]
+    [SerializeField] private int maxChargesPerBattle = 0;
+    private int chargesUsedInBattle = 0;
+    private int chargeCooldownRemaining = 0;
+
+    [Header("Special Ability Settings")]
+    [SerializeField] private int specialAbilityEnergyCost = 20;
+    [SerializeField] private float specialAbilityCooldown = 1;
+    [SerializeField] private int specialAbilityValue = 25; // Урон/лечение и т.д.
+    [SerializeField] private float specialAbilityRange = 3f; // ДАЛЬНОСТЬ применения способности
+    [SerializeField] private float specialAbilityEffectRadius = 1f; // РАДИУС ЭФФЕКТА (область взрыва для артиллерии)
+
+    [Header("Ability Prefabs")]
+    public GameObject artilleryBombPrefab; // Префаб бомбы для артиллерии
+
+    // Настройки цели способности
+    public enum AbilityTarget
+    {
+        Self,
+        Ally,
+        Enemy,
+        AnyUnit,
+        GroundCell,
+        Any
+    }
+
+    [SerializeField] private AbilityTarget specialAbilityTarget = AbilityTarget.Self;
+
+    // Система панелей для эффектов
+    [System.Serializable]
+    public class EffectPanel
+    {
+        public GameObject panelObject;      // Сама панель (GameObject)
+        public Image backgroundImage;       // Фоновое изображение панели
+        public Image effectIconImage;       // Изображение иконки эффекта
+        public bool isActive = false;       // Активна ли панель
+        public string effectId;             // ID эффекта, который занимает панель
+
+        // Конструктор для нахождения компонентов
+        public void Initialize()
+        {
+            if (panelObject != null)
+            {
+                // Ищем компоненты автоматически
+                if (backgroundImage == null)
+                    backgroundImage = panelObject.GetComponent<Image>();
+
+                if (effectIconImage == null)
+                {
+                    // Ищем дочерний объект с иконкой
+                    Transform iconTransform = panelObject.transform.Find("Icon");
+                    if (iconTransform != null)
+                        effectIconImage = iconTransform.GetComponent<Image>();
+                }
+            }
+        }
+
+        // Активировать панель с эффектом
+        public void Activate(Sprite icon, Color backgroundColor, string effectId)
+        {
+            if (panelObject == null) return;
+
+            panelObject.SetActive(true);
+            isActive = true;
+            this.effectId = effectId;
+
+            // Устанавливаем фон
+            if (backgroundImage != null)
+            {
+                backgroundImage.color = backgroundColor;
+            }
+
+            // Устанавливаем иконку
+            if (effectIconImage != null && icon != null)
+            {
+                effectIconImage.sprite = icon;
+                effectIconImage.color = Color.white;
+            }
+        }
+
+        // Деактивировать панель
+        public void Deactivate()
+        {
+            if (panelObject != null)
+            {
+                panelObject.SetActive(false);
+            }
+            isActive = false;
+            effectId = null;
+
+            // Сбрасываем иконку
+            if (effectIconImage != null)
+            {
+                effectIconImage.sprite = null;
+            }
+        }
+
+        // Обновить цвет фона
+        public void UpdateBackgroundColor(Color newColor)
+        {
+            if (backgroundImage != null)
+            {
+                backgroundImage.color = newColor;
+            }
+        }
+    }
+
+    [Header("Effect Panels Settings")]
+    public EffectPanel[] effectPanels = new EffectPanel[3]; // 3 панели для эффектов
+
+    [Header("Default Panel Colors")]
+    public Color shieldPanelColor = new Color(0f, 0.8f, 1f, 0.7f);     // Голубой для щита
+    public Color buffPanelColor = new Color(0.8f, 0.8f, 0f, 0.7f);     // Желтый для баффов
+    public Color debuffPanelColor = new Color(1f, 0.3f, 0.3f, 0.7f);   // Красный для дебаффов
+    public Color healPanelColor = new Color(0f, 1f, 0f, 0.7f);         // Зеленый для лечения
+    public Color utilityPanelColor = new Color(0.8f, 0f, 1f, 0.7f);    // Фиолетовый для утилити
+    public Color chargePanelColor = new Color(1f, 0.5f, 0f, 0.7f);     // Оранжевый для рывка
+
+    [Header("Layer Masks")]
+    public LayerMask unitLayerMask = -1; // Инициализируем в Awake
+    public LayerMask hexLayerMask = -1; // Инициализируем в Awake
+
+    // Система щита
+    [Header("Shield System")]
+    [SerializeField] private int currentShieldHP = 0;
+    [SerializeField] private int maxShieldHP = 50;
+    [SerializeField] private bool hasShield = false;
+
+    // Активные статус-эффекты
+    private Dictionary<string, StatusEffect> activeEffects = new Dictionary<string, StatusEffect>();
+
+    [Header("Current State")]
+    public HexCell currentCell;
+    public bool isMoving = false;
+    public bool hasMovedThisTurn = false;
+    public bool hasActedThisTurn = false; // Для использования способностей/атак
+
+    // Для отслеживания кулдаунов
+    private int specialAbilityCooldownRemaining = 0;
+
+    [Header("Debug")]
+    [SerializeField] private int currentMovementPoints;
+    [SerializeField] private float currentSpeedMultiplier = 1f;
+    [SerializeField] private int currentHealth;
+    [SerializeField] private int currentEnergy;
+
+    // Для рывка
+    private bool chargeUsedThisTurn = false;
+    private float originalMovementSpeed;
+    private int originalMaxMovementPoints;
+
+    [Header("UI References")]
+    [SerializeField] private GameObject dodgeTextObject;
+    [SerializeField] private float dodgeTextShowTime = 1.5f;
+
+    // UI для щита
+    [SerializeField] private GameObject shieldBarObject;
+    [SerializeField] private Image shieldBarFill;
+    [SerializeField] private TMP_Text shieldText;
+
+    [Header("Special Ability Visual Effect")]
+    [SerializeField] private GameObject specialAbilityVisualEffect;
+
+    private List<HexCell> currentPath;
+    private int pathIndex;
+    private Coroutine movementCoroutine;
+    private bool isSnappingToCell = false;
+    private Coroutine dodgeTextCoroutine;
+
+    // Ссылка на GlobalAbilitiesUI для получения настроек эффектов
+    private GlobalAbilitiesUI abilitiesUI;
+
+    // События для UI и других систем
+    public delegate void HealthChangedDelegate(int newHealth, int maxHealth, int shieldHP);
+    public event HealthChangedDelegate OnHealthChanged;
+
+    public delegate void EnergyChangedDelegate(int newEnergy, int maxEnergy);
+    public event EnergyChangedDelegate OnEnergyChanged;
+
+    public delegate void UnitDiedDelegate(Unit unit);
+    public event UnitDiedDelegate OnUnitDied;
+
+    public delegate void UnitAttackedDelegate(Unit attacker, Unit target, int damage, bool wasDodged);
+    public event UnitAttackedDelegate OnUnitAttacked;
+
+    public delegate void UnitDodgedDelegate(Unit dodger, Unit attacker);
+    public event UnitDodgedDelegate OnUnitDodged;
+
+    public delegate void AbilityUsedDelegate(Unit unit, SpecialAbilityType abilityType, bool successful);
+    public event AbilityUsedDelegate OnAbilityUsed;
+
+    // События для щита и эффектов
+    public delegate void ShieldChangedDelegate(int currentShield, int maxShield);
+    public event ShieldChangedDelegate OnShieldChanged;
+
+    public delegate void EffectAddedDelegate(string effectId, Sprite icon, Color panelColor, float duration, int turns);
+    public event EffectAddedDelegate OnEffectAdded;
+
+    public delegate void EffectRemovedDelegate(string effectId);
+    public event EffectRemovedDelegate OnEffectRemoved;
+
+    // Класс для статус-эффекта
+    [System.Serializable]
+    public class StatusEffect
+    {
+        public string effectId;
+        public Sprite icon;
+        public Color panelColor;
+        public GlobalAbilitiesUI.EffectDisplayType displayType;
+        public float duration;
+        public int remainingTurns;
+        public EffectPanel effectPanel;
+        public float startTime;
+    }
+
+    void Awake()
+    {
+        // Инициализируем LayerMask в Awake
+        InitializeLayerMasks();
+    }
+
+    void InitializeLayerMasks()
+    {
+        // Если маски не установлены (значение -1), устанавливаем по умолчанию
+        if (unitLayerMask.value == -1)
+        {
+            int unitLayer = LayerMask.NameToLayer("Unit");
+            if (unitLayer != -1)
+            {
+                unitLayerMask = 1 << unitLayer;
+            }
+            else
+            {
+                Debug.LogWarning("Слой 'Unit' не найден. Установите LayerMask в инспекторе.");
+            }
+        }
+
+        if (hexLayerMask.value == -1)
+        {
+            int hexLayer = LayerMask.NameToLayer("Hex");
+            if (hexLayer != -1)
+            {
+                hexLayerMask = 1 << hexLayer;
+            }
+            else
+            {
+                Debug.LogWarning("Слой 'Hex' не найден. Установите LayerMask в инспекторе.");
+            }
+        }
+    }
+
+    void Start()
+    {
+        currentMovementPoints = maxMovementPoints;
+        currentHealth = maxHealth;
+        currentEnergy = maxEnergy;
+
+        // Сохраняем оригинальные значения для рывка
+        originalMovementSpeed = movementSpeed;
+        originalMaxMovementPoints = maxMovementPoints;
+
+        // Сбрасываем счетчик рывков при старте (НОВОЕ)
+        chargesUsedInBattle = 0;
+
+        // Находим UI элементы если не заданы
+        FindDodgeUIElements();
+
+        // Находим UI элементы щита
+        FindShieldUIElements();
+
+        // Скрываем текст уворота (выключаем объект)
+        if (dodgeTextObject != null)
+        {
+            dodgeTextObject.SetActive(false);
+        }
+
+        // Скрываем UI щита
+        if (shieldBarObject != null)
+        {
+            shieldBarObject.SetActive(false);
+        }
+
+        // Находим GlobalAbilitiesUI
+        abilitiesUI = FindObjectOfType<GlobalAbilitiesUI>();
+
+        // Инициализируем панели эффектов
+        InitializeEffectPanels();
+
+        // Скрываем все панели эффектов
+        HideAllEffectPanels();
+
+        // Автоматически находим клетку, если не назначена
+        if (currentCell == null)
+        {
+            FindAndSnapToCell();
+        }
+        else
+        {
+            SnapToCell(currentCell);
+        }
+    }
+
+    // ================= НОВЫЕ МЕТОДЫ ДЛЯ ОГРАНИЧЕНИЯ РЫВКОВ ЗА БОЙ =================
+
+    /// <summary>
+    /// Получить количество оставшихся рывков за бой
+    /// </summary>
+    public int GetRemainingChargesInBattle()
+    {
+        // Если maxChargesPerBattle = 0, значит без ограничений
+        if (maxChargesPerBattle <= 0) return int.MaxValue; // Возвращаем большое число, чтобы показать "без ограничений"
+        return Mathf.Max(0, maxChargesPerBattle - chargesUsedInBattle);
+    }
+
+    /// <summary>
+    /// Сбросить счетчик использованных рывков (вызывать при начале нового боя)
+    /// </summary>
+    public void ResetChargesUsed()
+    {
+        chargesUsedInBattle = 0;
+        Debug.Log($"{name}: Сброшены использованные рывки. Осталось: {GetRemainingChargesInBattle()}");
+    }
+
+    /// <summary>
+    /// Получить максимальное количество рывков за бой
+    /// </summary>
+    public int GetMaxChargesPerBattle()
+    {
+        return maxChargesPerBattle;
+    }
+
+    /// <summary>
+    /// Получить количество использованных рывков
+    /// </summary>
+    public int GetChargesUsedInBattle()
+    {
+        return chargesUsedInBattle;
+    }
+
+    // ================= ОСТАЛЬНЫЕ МЕТОДЫ =================
+
+    // Инициализация панелей эффектов
+    void InitializeEffectPanels()
+    {
+        foreach (EffectPanel panel in effectPanels)
+        {
+            panel.Initialize();
+        }
+    }
+
+    // Поиск UI элементов щита
+    void FindShieldUIElements()
+    {
+        if (shieldBarObject == null)
+        {
+            // Ищем в дочерних объектах
+            Transform shieldTransform = transform.Find("ShieldBar");
+            if (shieldTransform != null)
+            {
+                shieldBarObject = shieldTransform.gameObject;
+                shieldBarFill = shieldTransform.GetComponentInChildren<Image>();
+
+                TextMeshProUGUI tmpText = shieldTransform.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmpText != null)
+                {
+                    shieldText = tmpText;
+                }
+            }
+        }
+    }
+
+    // Скрыть все панели эффектов
+    void HideAllEffectPanels()
+    {
+        foreach (EffectPanel panel in effectPanels)
+        {
+            panel.Deactivate();
+        }
+    }
+
+    // Показать эффект на панели
+    bool ShowEffectOnPanel(Sprite icon, GlobalAbilitiesUI.EffectDisplayType displayType,
+                                 Color panelColor, float duration = 0f, int turns = 0)
+    {
+        // Проверяем, нет ли уже такого же эффекта
+        string effectType = GetEffectTypeFromDisplayType(displayType);
+        if (!string.IsNullOrEmpty(effectType))
+        {
+            EffectPanel existingPanel = GetEffectPanelByType(effectType);
+            if (existingPanel != null)
+            {
+                // Обновляем существующий эффект
+                Debug.Log($"{name}: Эффект {effectType} уже отображается, обновляем панель");
+
+                // Находим существующий эффект в словаре
+                StatusEffect existingEffect = null;
+                foreach (var kvp in activeEffects)
+                {
+                    if (kvp.Value.effectPanel == existingPanel)
+                    {
+                        existingEffect = kvp.Value;
+                        break;
+                    }
+                }
+
+                if (existingEffect != null)
+                {
+                    // Обновляем эффект
+                    existingEffect.icon = icon;
+                    existingEffect.panelColor = panelColor;
+                    existingEffect.duration = duration;
+                    existingEffect.remainingTurns = turns;
+                    existingEffect.startTime = Time.time;
+
+                    // Обновляем панель
+                    existingPanel.Activate(icon, panelColor, existingEffect.effectId);
+
+                    Debug.Log($"{name} обновил эффект на панели: {existingEffect.effectId}");
+                    return true;
+                }
+            }
+        }
+
+        EffectPanel availablePanel = GetAvailableEffectPanel();
+        if (availablePanel == null || icon == null)
+        {
+            Debug.LogWarning($"No available panel or icon for effect on {name}");
+            return false;
+        }
+
+        // Создаем ID эффекта
+        string effectId = $"effect_{effectType}_{Time.time}_{Random.Range(0, 1000)}";
+
+        // Активируем панель (добавляем effectId)
+        availablePanel.Activate(icon, panelColor, effectId);
+
+        // Создаем и сохраняем статус-эффект
+        StatusEffect effect = new StatusEffect
+        {
+            effectId = effectId,
+            icon = icon,
+            panelColor = panelColor,
+            displayType = displayType,
+            duration = duration,
+            remainingTurns = turns,
+            effectPanel = availablePanel,
+            startTime = Time.time
+        };
+
+        activeEffects[effectId] = effect;
+
+        // Оповещаем UI - передаем ВСЕ параметры, включая turns
+        OnEffectAdded?.Invoke(effectId, icon, panelColor, duration, turns);
+
+        // Запускаем обновление эффекта
+        StartCoroutine(UpdateEffectRoutine(effectId));
+
+        Debug.Log($"{name} показал эффект на панели: {effectId} (тип: {effectType})");
+        return true;
+    }
+
+    // Получить тип эффекта из типа отображения
+    string GetEffectTypeFromDisplayType(GlobalAbilitiesUI.EffectDisplayType displayType)
+    {
+        switch (displayType)
+        {
+            case GlobalAbilitiesUI.EffectDisplayType.WhileShieldActive:
+                return "shield";
+            case GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd:
+                return "charge";
+            case GlobalAbilitiesUI.EffectDisplayType.Timed:
+                return "timed";
+            default:
+                return "other";
+        }
+    }
+
+    // Получить панель с эффектом определенного типа
+    EffectPanel GetEffectPanelByType(string effectType)
+    {
+        foreach (EffectPanel panel in effectPanels)
+        {
+            if (panel.isActive && panel.effectId != null && panel.effectId.Contains(effectType))
+            {
+                return panel;
+            }
+        }
+        return null;
+    }
+
+    // Получить свободную панель для эффекта
+    EffectPanel GetAvailableEffectPanel()
+    {
+        foreach (EffectPanel panel in effectPanels)
+        {
+            if (!panel.isActive)
+            {
+                return panel;
+            }
+        }
+        return null;
+    }
+
+    // Корунтина для обновления эффекта
+    IEnumerator UpdateEffectRoutine(string effectId)
+    {
+        if (!activeEffects.ContainsKey(effectId)) yield break;
+
+        StatusEffect effect = activeEffects[effectId];
+
+        while (true)
+        {
+            // Проверяем условия удаления эффекта
+            bool shouldRemove = false;
+
+            switch (effect.displayType)
+            {
+                case GlobalAbilitiesUI.EffectDisplayType.Timed:
+                    if (Time.time - effect.startTime >= effect.duration)
+                    {
+                        shouldRemove = true;
+                        Debug.Log($"{effectId} удален по истечении времени: {effect.duration} сек");
+                    }
+                    break;
+
+                case GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd:
+                    if (hasActedThisTurn)
+                    {
+                        shouldRemove = true;
+                        Debug.Log($"{effectId} удален в конце хода");
+                    }
+                    break;
+
+                case GlobalAbilitiesUI.EffectDisplayType.UntilNextTurn:
+                    if (effect.remainingTurns <= 0)
+                    {
+                        shouldRemove = true;
+                        Debug.Log($"{effectId} удален после {effect.remainingTurns} ходов");
+                    }
+                    break;
+
+                case GlobalAbilitiesUI.EffectDisplayType.WhileShieldActive:
+                    if (currentShieldHP <= 0)
+                    {
+                        shouldRemove = true;
+                        Debug.Log($"{effectId} удален, так как щит разрушен");
+                    }
+                    break;
+
+                case GlobalAbilitiesUI.EffectDisplayType.Permanent:
+                    // Не удаляем автоматически
+                    break;
+            }
+
+            if (shouldRemove)
+            {
+                RemoveEffectFromPanel(effectId);
+                yield break;
+            }
+
+            yield return new WaitForSeconds(0.5f); // Проверяем каждые 0.5 секунд
+        }
+    }
+
+    // Удалить эффект с панели
+    void RemoveEffectFromPanel(string effectId)
+    {
+        if (!activeEffects.ContainsKey(effectId)) return;
+
+        StatusEffect effect = activeEffects[effectId];
+
+        // Деактивируем панель
+        if (effect.effectPanel != null)
+        {
+            effect.effectPanel.Deactivate();
+        }
+
+        // Удаляем из словаря
+        activeEffects.Remove(effectId);
+
+        // Оповещаем UI
+        OnEffectRemoved?.Invoke(effectId);
+
+        Debug.Log($"{name} удалил эффект с панели: {effectId}");
+    }
+
+    // Удалить все эффекты определенного типа
+    public void RemoveEffectsByDisplayType(GlobalAbilitiesUI.EffectDisplayType displayType)
+    {
+        List<string> effectsToRemove = new List<string>();
+
+        foreach (var kvp in activeEffects)
+        {
+            if (kvp.Value.displayType == displayType)
+            {
+                effectsToRemove.Add(kvp.Key);
+            }
+        }
+
+        foreach (string effectId in effectsToRemove)
+        {
+            RemoveEffectFromPanel(effectId);
+        }
+    }
+
+    // Получить цвет панели для типа способности
+    private Color GetPanelColorForAbilityType(SpecialAbilityType abilityType)
+    {
+        switch (abilityType)
+        {
+            case SpecialAbilityType.ShieldBarrier:
+                return shieldPanelColor;
+            case SpecialAbilityType.Berserk:
+                return buffPanelColor;
+            case SpecialAbilityType.MedicHeal:
+                return healPanelColor;
+            case SpecialAbilityType.EMP:
+            case SpecialAbilityType.Grenade:
+                return debuffPanelColor;
+            case SpecialAbilityType.SmokeScreen:
+            case SpecialAbilityType.ReconScan:
+            case SpecialAbilityType.Teleport:
+                return utilityPanelColor;
+            case SpecialAbilityType.Charge:
+                return chargePanelColor;
+            default:
+                return new Color(0.5f, 0.5f, 0.5f, 0.7f); // Серый по умолчанию
+        }
+    }
+
+    // Система щита
+    public void AddShield(int shieldAmount)
+    {
+        if (shieldAmount <= 0) return;
+
+        currentShieldHP = Mathf.Min(currentShieldHP + shieldAmount, maxShieldHP);
+        hasShield = true;
+
+        // Показываем UI щита
+        if (shieldBarObject != null)
+        {
+            shieldBarObject.SetActive(true);
+        }
+
+        UpdateShieldUI();
+
+        // Проверяем, не отображается ли уже эффект щита
+        bool shieldEffectAlreadyShown = false;
+        foreach (var kvp in activeEffects)
+        {
+            if (kvp.Value.displayType == GlobalAbilitiesUI.EffectDisplayType.WhileShieldActive)
+            {
+                shieldEffectAlreadyShown = true;
+                Debug.Log($"{name}: Эффект щита уже отображается, не добавляем новый");
+                break;
+            }
+        }
+
+        // Показываем эффект щита на панели, только если его еще нет
+        if (!shieldEffectAlreadyShown)
+        {
+            if (abilitiesUI != null)
+            {
+                var abilitySettings = abilitiesUI.GetAbilityEffectSettings(SpecialAbilityType.ShieldBarrier);
+                if (abilitySettings != null && abilitySettings.effectIcon != null)
+                {
+                    // Используем цвет для щита из настроек или по умолчанию
+                    Color panelColor = abilitySettings.panelColor.a > 0 ?
+                        abilitySettings.panelColor : shieldPanelColor;
+
+                    ShowEffectOnPanel(abilitySettings.effectIcon,
+                        GlobalAbilitiesUI.EffectDisplayType.WhileShieldActive,
+                        panelColor);
+                    Debug.Log($"{name} показал эффект щита на панели");
+                }
+                else
+                {
+                    Debug.LogWarning($"Не найдена иконка щита в GlobalAbilitiesUI для {name}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"Не найден GlobalAbilitiesUI для показа эффекта щита {name}");
+            }
+        }
+
+        Debug.Log($"{name} получил щит: {currentShieldHP}/{maxShieldHP}");
+    }
+
+    // Нанесение урона с учетом щита
+    public void TakeDamageWithShield(int damage, Unit attacker)
+    {
+        if (damage <= 0 || currentHealth <= 0) return;
+
+        // Проверяем уворот
+        if (CheckDodge())
+        {
+            // Уворот успешен
+            ShowDodgeText();
+            OnUnitDodged?.Invoke(this, attacker);
+            Debug.Log($"{name} успешно уклонился от атаки!");
+            return;
+        }
+
+        int damageToHealth = damage;
+
+        // Если есть щит, сначала наносим урон по щиту
+        if (currentShieldHP > 0)
+        {
+            int damageToShield = Mathf.Min(damage, currentShieldHP);
+            currentShieldHP -= damageToShield;
+
+            // Урон НЕ проходит на здоровье, даже если щита не хватило
+            damageToHealth = 0; // Весь урон поглощается щитом, даже если он не полностью
+
+            UpdateShieldUI();
+
+            Debug.Log($"{name} щит поглотил {damageToShield} урона. Осталось щита: {currentShieldHP}");
+
+            // Если щит разрушен
+            if (currentShieldHP <= 0)
+            {
+                hasShield = false;
+                if (shieldBarObject != null)
+                {
+                    shieldBarObject.SetActive(false);
+                }
+
+                // Удаляем эффект щита с панели
+                RemoveEffectsByDisplayType(GlobalAbilitiesUI.EffectDisplayType.WhileShieldActive);
+
+                Debug.Log($"{name} щит разрушен!");
+            }
+        }
+
+        // Если остался урон после щита (не должно происходить при новой логике)
+        if (damageToHealth > 0)
+        {
+            currentHealth -= damageToHealth;
+            currentHealth = Mathf.Max(0, currentHealth);
+
+            OnHealthChanged?.Invoke(currentHealth, maxHealth, currentShieldHP);
+
+            if (currentHealth <= 0)
+            {
+                Die();
+            }
+
+            Debug.Log($"{name} получил {damageToHealth} урона по здоровью. Здоровье: {currentHealth}/{maxHealth}");
+        }
+        else
+        {
+            // Урон полностью поглощен щитом
+            OnHealthChanged?.Invoke(currentHealth, maxHealth, currentShieldHP);
+            Debug.Log($"{name} весь урон поглощен щитом. Здоровье: {currentHealth}/{maxHealth}, Щит: {currentShieldHP}");
+        }
+    }
+
+    // Обновление UI щита
+    void UpdateShieldUI()
+    {
+        if (shieldBarFill != null)
+        {
+            float fillAmount = (float)currentShieldHP / maxShieldHP;
+            shieldBarFill.fillAmount = fillAmount;
+
+            // Меняем цвет в зависимости от уровня щита
+            if (fillAmount > 0.6f)
+                shieldBarFill.color = Color.cyan;
+            else if (fillAmount > 0.3f)
+                shieldBarFill.color = Color.blue;
+            else
+                shieldBarFill.color = Color.magenta;
+        }
+
+        if (shieldText != null)
+        {
+            shieldText.text = $"{currentShieldHP}/{maxShieldHP}";
+        }
+
+        OnShieldChanged?.Invoke(currentShieldHP, maxShieldHP);
+    }
+
+    // Получить текущее значение щита
+    public int GetCurrentShieldHP() => currentShieldHP;
+
+    // Проверка, есть ли щит
+    bool HasShield() => currentShieldHP > 0;
+
+    void FindDodgeUIElements()
+    {
+        if (dodgeTextObject == null)
+        {
+            // Ищем любой GameObject с текстом в дочерних объектах
+            TextMeshProUGUI tmpText = GetComponentInChildren<TextMeshProUGUI>(true);
+            if (tmpText != null)
+            {
+                dodgeTextObject = tmpText.gameObject;
+            }
+            else
+            {
+                UnityEngine.UI.Text uiText = GetComponentInChildren<UnityEngine.UI.Text>(true);
+                if (uiText != null)
+                {
+                    dodgeTextObject = uiText.gameObject;
+                }
+            }
+        }
+    }
+
+    // Методы для дебага (можно вызывать из UI кнопок)
+    public void DebugTakeDamage(int damage)
+    {
+        TakeDamageWithShield(damage, null);
+        Debug.Log($"Unit {gameObject.name} took {damage} damage. Health: {currentHealth}/{maxHealth}, Shield: {currentShieldHP}");
+    }
+
+    // Дебаг добавления щита
+    public void DebugAddShield(int shieldAmount)
+    {
+        AddShield(shieldAmount);
+        Debug.Log($"Unit {gameObject.name} added {shieldAmount} shield. Total shield: {currentShieldHP}/{maxShieldHP}");
+    }
+
+    public void DebugUseAbility(int energyCost)
+    {
+        if (UseEnergy(energyCost))
+        {
+            Debug.Log($"Unit {gameObject.name} used ability. Energy: {currentEnergy}/{maxEnergy}");
+        }
+        else
+        {
+            Debug.Log($"Not enough energy! Need {energyCost}, have {currentEnergy}");
+        }
+    }
+
+    public void DebugHeal(int amount)
+    {
+        Heal(amount);
+        Debug.Log($"Unit {gameObject.name} healed for {amount}. Health: {currentHealth}/{maxHealth}");
+    }
+
+    public void DebugRestoreEnergy(int amount)
+    {
+        RestoreEnergy(amount);
+        Debug.Log($"Unit {gameObject.name} restored {amount} energy. Energy: {currentEnergy}/{maxEnergy}");
+    }
+
+    // Основные методы для здоровья (обновлены для работы с щитом)
+    public void TakeDamage(int damage, Unit attacker)
+    {
+        TakeDamageWithShield(damage, attacker);
+    }
+
+    // Проверка уворота
+    private bool CheckDodge()
+    {
+        if (dodgeChance <= 0) return false;
+
+        // Генерируем случайное число от 1 до 100
+        int randomValue = Random.Range(1, 101);
+        bool dodged = randomValue <= dodgeChance;
+
+        Debug.Log($"{name} dodge check: {randomValue} <= {dodgeChance} = {dodged}");
+        return dodged;
+    }
+
+    // Показать текст уворота (просто включаем объект)
+    private void ShowDodgeText()
+    {
+        if (dodgeTextObject == null) return;
+
+        // Останавливаем предыдущую корутину если она есть
+        if (dodgeTextCoroutine != null)
+        {
+            StopCoroutine(dodgeTextCoroutine);
+        }
+
+        // Запускаем новую корутину
+        dodgeTextCoroutine = StartCoroutine(ShowDodgeTextRoutine());
+    }
+
+    IEnumerator ShowDodgeTextRoutine()
+    {
+        // Включаем текст
+        dodgeTextObject.SetActive(true);
+
+        // Ждем указанное время
+        yield return new WaitForSeconds(dodgeTextShowTime);
+
+        // Выключаем текст
+        dodgeTextObject.SetActive(false);
+    }
+
+    public void Heal(int amount)
+    {
+        if (amount <= 0 || currentHealth >= maxHealth) return;
+
+        currentHealth += amount;
+        currentHealth = Mathf.Min(currentHealth, maxHealth);
+
+        OnHealthChanged?.Invoke(currentHealth, maxHealth, currentShieldHP);
+    }
+
+    public void HealToFull()
+    {
+        currentHealth = maxHealth;
+        OnHealthChanged?.Invoke(currentHealth, maxHealth, currentShieldHP);
+    }
+
+    // Основные методы для энергии
+    public bool UseEnergy(int amount)
+    {
+        if (amount <= 0) return true;
+        if (currentEnergy < amount) return false;
+
+        currentEnergy -= amount;
+        OnEnergyChanged?.Invoke(currentEnergy, maxEnergy);
+        return true;
+    }
+
+    public void RestoreEnergy(int amount)
+    {
+        if (amount <= 0 || currentEnergy >= maxEnergy) return;
+
+        currentEnergy += amount;
+        currentEnergy = Mathf.Min(currentEnergy, maxEnergy);
+
+        OnEnergyChanged?.Invoke(currentEnergy, maxEnergy);
+    }
+
+    public void RestoreEnergyToFull()
+    {
+        currentEnergy = maxEnergy;
+        OnEnergyChanged?.Invoke(currentEnergy, maxEnergy);
+    }
+
+    // Метод смерти юнита (обновлен)
+    private void Die()
+    {
+        // Освобождаем клетку
+        if (currentCell != null)
+        {
+            currentCell.occupiedUnit = null;
+        }
+
+        // Удаляем все эффекты
+        ClearAllEffects();
+
+        // Оповещаем другие системы
+        OnUnitDied?.Invoke(this);
+
+        // Временно деактивируем объект
+        Debug.Log($"Unit {gameObject.name} died!");
+        gameObject.SetActive(false);
+    }
+
+    // Очистить все эффекты
+    void ClearAllEffects()
+    {
+        List<string> effectsToRemove = new List<string>(activeEffects.Keys);
+        foreach (string effectId in effectsToRemove)
+        {
+            RemoveEffectFromPanel(effectId);
+        }
+        activeEffects.Clear();
+    }
+
+    // Метод атаки другого юнита (обновлен для работы с новым TakeDamage)
+    public void Attack(Unit targetUnit)
+    {
+        if (targetUnit == null || targetUnit == this)
+        {
+            Debug.LogWarning("Invalid attack target!");
+            return;
+        }
+
+        // Проверяем расстояние
+        float distance = Vector3.Distance(transform.position, targetUnit.transform.position);
+        if (distance > attackRange)
+        {
+            Debug.LogWarning("Target is out of range!");
+            return;
+        }
+
+        // Проверяем, есть ли очки действия
+        if (hasActedThisTurn)
+        {
+            Debug.LogWarning("Unit has already acted this turn!");
+            return;
+        }
+
+        // Проверяем, жива ли цель
+        if (!targetUnit.IsAlive())
+        {
+            Debug.LogWarning("Target is already dead!");
+            return;
+        }
+
+        // Запоминаем здоровье и щит цели до атаки
+        int targetHealthBefore = targetUnit.currentHealth;
+        int targetShieldBefore = targetUnit.GetCurrentShieldHP();
+
+        // Наносим урон (цель сама проверит уворот)
+        int actualDamage = CalculateDamage(targetUnit);
+        targetUnit.TakeDamage(actualDamage, this);
+
+        // Проверяем, был ли уворот
+        bool wasDodged = (targetUnit.currentHealth == targetHealthBefore &&
+                         targetUnit.GetCurrentShieldHP() == targetShieldBefore);
+
+        hasActedThisTurn = true;
+
+        // Оповещаем о атаке
+        OnUnitAttacked?.Invoke(this, targetUnit, actualDamage, wasDodged);
+
+        if (!wasDodged)
+        {
+            Debug.Log($"Unit {gameObject.name} attacked {targetUnit.gameObject.name} for {actualDamage} damage!");
+        }
+        else
+        {
+            Debug.Log($"Unit {targetUnit.gameObject.name} dodged the attack from {gameObject.name}!");
+        }
+
+        // Поворачиваемся к цели
+        StartCoroutine(RotateTowards(targetUnit.transform.position));
+    }
+
+    // Расчет урона (можно расширить для разных типов атак)
+    private int CalculateDamage(Unit target)
+    {
+        // Базовая логика расчета урона
+        int finalDamage = baseDamage;
+
+        // Проверяем эффект берсерка
+        foreach (var effect in activeEffects.Values)
+        {
+            // Здесь можно добавить логику модификации урона от эффектов
+        }
+
+        return finalDamage;
+    }
+
+    // Метод использования способности (плейсхолдер)
+    public void UseAbility(int abilityIndex, Unit targetUnit = null)
+    {
+        if (hasActedThisTurn)
+        {
+            Debug.LogWarning("Unit has already acted this turn!");
+            return;
+        }
+
+        // В зависимости от индекса способности
+        switch (abilityIndex)
+        {
+            case 0: // Способность 1 - требует 10 энергии
+                if (UseEnergy(10))
+                {
+                    // Логика способности
+                    Debug.Log($"Unit {gameObject.name} used ability 1!");
+                    hasActedThisTurn = true;
+                }
+                break;
+
+            case 1: // Способность 2 - требует 20 энергии
+                if (UseEnergy(20))
+                {
+                    // Логика способности
+                    Debug.Log($"Unit {gameObject.name} used ability 2!");
+                    hasActedThisTurn = true;
+                }
+                break;
+
+            default:
+                Debug.LogWarning($"Unknown ability index: {abilityIndex}");
+                break;
+        }
+    }
+
+    // Обновленный метод сброса хода (С ИСПРАВЛЕНИЯМИ ДЛЯ ЭФФЕКТОВ)
+    public void ResetTurn()
+    {
+        // Сбрасываем очки движения и действия
+        currentMovementPoints = maxMovementPoints;
+        hasMovedThisTurn = false;
+        hasActedThisTurn = false;
+
+        // Сбрасываем рывок, если он был использован
+        if (chargeUsedThisTurn)
+        {
+            movementSpeed = originalMovementSpeed;
+            maxMovementPoints = originalMaxMovementPoints;
+            chargeUsedThisTurn = false;
+            Debug.Log($"{name} charge effect ended. Speed: {movementSpeed}, MP: {maxMovementPoints}");
+        }
+
+        // Уменьшаем кулдаун способности
+        if (specialAbilityCooldownRemaining > 0)
+        {
+            specialAbilityCooldownRemaining--;
+        }
+
+        // Уменьшаем кулдаун рывка
+        if (chargeCooldownRemaining > 0)
+        {
+            chargeCooldownRemaining--;
+        }
+
+        // Обновляем статус-эффекты с типом UntilTurnEnd
+        List<string> effectsToUpdate = new List<string>();
+        foreach (var kvp in activeEffects)
+        {
+            if (kvp.Value.displayType == GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd)
+            {
+                effectsToUpdate.Add(kvp.Key);
+            }
+            else if (kvp.Value.displayType == GlobalAbilitiesUI.EffectDisplayType.UntilNextTurn)
+            {
+                kvp.Value.remainingTurns--;
+            }
+        }
+
+        foreach (string effectId in effectsToUpdate)
+        {
+            RemoveEffectFromPanel(effectId);
+        }
+
+        // Восстанавливаем немного энергии каждый ход
+        RestoreEnergy(energyRegenPerTurn);
+    }
+
+    // Геттеры для UI и других систем
+    public int GetCurrentHealth() => currentHealth;
+    public int GetCurrentEnergy() => currentEnergy;
+    public int GetCurrentMovementPoints() => currentMovementPoints;
+    public int GetDodgeChance() => dodgeChance;
+
+    public float GetHealthPercentage() => (float)currentHealth / maxHealth;
+    public float GetEnergyPercentage() => (float)currentEnergy / maxEnergy;
+
+    public bool IsAlive() => currentHealth > 0;
+    public bool CanAct() => !hasActedThisTurn && IsAlive();
+    public bool CanMove() => !hasMovedThisTurn && IsAlive() && currentMovementPoints > 0;
+
+    // Геттер для цели способности
+    public AbilityTarget GetSpecialAbilityTarget() => specialAbilityTarget;
+
+    // Методы для тестирования уворота
+    [ContextMenu("Test Dodge Display")]
+    public void TestDodgeDisplay()
+    {
+        ShowDodgeText();
+    }
+
+    [ContextMenu("Test Dodge Chance")]
+    public void TestDodgeChance()
+    {
+        bool dodged = CheckDodge();
+        Debug.Log($"Dodge test: {dodged} (chance: {dodgeChance}%)");
+    }
+
+    // Тест эффекта на панели
+    [ContextMenu("Test Effect Panel")]
+    public void TestEffectPanel()
+    {
+        if (abilitiesUI != null)
+        {
+            var settings = abilitiesUI.GetAbilityEffectSettings(SpecialAbilityType.ShieldBarrier);
+            if (settings != null && settings.effectIcon != null)
+            {
+                ShowEffectOnPanel(settings.effectIcon, GlobalAbilitiesUI.EffectDisplayType.Timed,
+                    settings.panelColor, 5f);
+            }
+        }
+    }
+
+    // Тест щита
+    [ContextMenu("Test Shield")]
+    public void TestShield()
+    {
+        AddShield(50);
+        DebugTakeDamage(100);
+    }
+
+    // ================= ИСПРАВЛЕННЫЕ МЕТОДЫ ДЛЯ РЫВКА =================
+
+    public bool CanUseCharge()
+    {
+        if (!hasChargeAbility || !IsAlive() || !CanAct() || chargeCooldownRemaining > 0 || currentEnergy < chargeEnergyCost)
+        {
+            return false;
+        }
+
+        // НОВАЯ ПРОВЕРКА: ограничение рывков за бой
+        if (maxChargesPerBattle > 0 && chargesUsedInBattle >= maxChargesPerBattle)
+        {
+            Debug.Log($"{name} cannot use charge: used {chargesUsedInBattle}/{maxChargesPerBattle} charges");
+            return false;
+        }
+
+        return true;
+    }
+
+    public void UseChargeAbility()
+    {
+        if (!CanUseCharge())
+        {
+            Debug.LogWarning($"{name} cannot use Charge ability now!");
+            return;
+        }
+
+        // Увеличиваем счетчик использованных рывков
+        chargesUsedInBattle++;
+
+        // Сохраняем текущее состояние перед рывком
+        float speedBeforeCharge = movementSpeed;
+        int mpBeforeCharge = maxMovementPoints;
+
+        // Используем энергию
+        if (!UseEnergy(chargeEnergyCost))
+        {
+            Debug.LogWarning($"Not enough energy for charge! Need {chargeEnergyCost}, have {currentEnergy}");
+            return;
+        }
+
+        // Применяем эффект рывка
+        movementSpeed = originalMovementSpeed * chargeSpeedMultiplier;
+        maxMovementPoints = originalMaxMovementPoints * chargeMovementMultiplier;
+        currentMovementPoints = maxMovementPoints; // Полностью восстанавливаем ОД для рывка
+        chargeUsedThisTurn = true;
+
+        // Устанавливаем кулдаун
+        chargeCooldownRemaining = Mathf.RoundToInt(chargeCooldown);
+
+        // Забираем возможность атаковать в этот ход
+        hasActedThisTurn = true;
+
+        // Проверяем, не отображается ли уже эффект рывка
+        bool chargeEffectAlreadyShown = false;
+        foreach (var kvp in activeEffects)
+        {
+            if (kvp.Value.displayType == GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd &&
+                kvp.Key.Contains("charge"))
+            {
+                chargeEffectAlreadyShown = true;
+                Debug.Log($"{name}: Эффект рывка уже отображается, не добавляем новый");
+                break;
+            }
+        }
+
+        // Показываем эффект рывка на панели, только если его еще нет (ИСПРАВЛЕНО)
+        if (!chargeEffectAlreadyShown)
+        {
+            if (abilitiesUI != null)
+            {
+                var settings = abilitiesUI.GetAbilityEffectSettings(SpecialAbilityType.Charge);
+                if (settings != null && settings.effectIcon != null)
+                {
+                    Color panelColor = settings.panelColor.a > 0 ?
+                        settings.panelColor : chargePanelColor;
+
+                    bool effectShown = ShowEffectOnPanel(settings.effectIcon,
+                        GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd,
+                        panelColor);
+
+                    if (effectShown)
+                    {
+                        Debug.Log($"{name} показал эффект рывка на панели");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"{name}: Не удалось показать эффект рывка на панели");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"No charge icon configured in GlobalAbilitiesUI for {name}");
+
+                    // Альтернативный вариант: создаем простую иконку
+                    Texture2D texture = new Texture2D(64, 64);
+                    Sprite defaultIcon = Sprite.Create(texture, new Rect(0, 0, 64, 64), Vector2.one * 0.5f);
+
+                    bool effectShown = ShowEffectOnPanel(defaultIcon,
+                        GlobalAbilitiesUI.EffectDisplayType.UntilTurnEnd,
+                        chargePanelColor);
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"GlobalAbilitiesUI not found for {name}");
+            }
+        }
+
+        Debug.Log($"{name} used Charge! Used charges: {chargesUsedInBattle}/{maxChargesPerBattle}. Speed: {speedBeforeCharge} -> {movementSpeed}, MP: {mpBeforeCharge} -> {maxMovementPoints}");
+        OnAbilityUsed?.Invoke(this, SpecialAbilityType.Charge, true);
+    }
+
+    // ================= ОСТАЛЬНЫЕ МЕТОДЫ БЕЗ ИЗМЕНЕНИЙ =================
+
+    public bool CanUseSpecialAbility()
+    {
+        return hasSpecialAbility && specialAbilityType != SpecialAbilityType.None &&
+               IsAlive() && CanAct() && specialAbilityCooldownRemaining <= 0 &&
+               currentEnergy >= specialAbilityEnergyCost;
+    }
+
+    public bool UseSpecialAbility(Unit target = null, Vector3? targetPosition = null)
+    {
+        if (!CanUseSpecialAbility())
+        {
+            Debug.LogWarning($"{name} cannot use special ability now!");
+            OnAbilityUsed?.Invoke(this, specialAbilityType, false);
+            return false;
+        }
+
+        // Проверяем цель, если способность требует цель
+        if (specialAbilityTarget != AbilityTarget.Self && target == null && !targetPosition.HasValue)
+        {
+            Debug.LogWarning($"Special ability requires a target!");
+            return false;
+        }
+
+        // Проверяем тип цели
+        if (target != null)
+        {
+            bool isValidTarget = false;
+
+            switch (specialAbilityTarget)
+            {
+                case AbilityTarget.Self:
+                    isValidTarget = (target == this);
+                    break;
+                case AbilityTarget.Ally:
+                    isValidTarget = (target.CompareTag(this.tag) && target != this);
+                    break;
+                case AbilityTarget.Enemy:
+                    isValidTarget = (target.CompareTag("enemy_unit") && this.CompareTag("selected_unit")) ||
+                                    (target.CompareTag("selected_unit") && this.CompareTag("enemy_unit"));
+                    break;
+                case AbilityTarget.AnyUnit:
+                    isValidTarget = true;
+                    break;
+                default:
+                    isValidTarget = true;
+                    break;
+            }
+
+            if (!isValidTarget)
+            {
+                Debug.LogWarning($"Invalid target for ability! Expected: {specialAbilityTarget}");
+                return false;
+            }
+        }
+
+        // Используем энергию
+        if (!UseEnergy(specialAbilityEnergyCost))
+        {
+            Debug.LogWarning($"Not enough energy for special ability! Need {specialAbilityEnergyCost}, have {currentEnergy}");
+            return false;
+        }
+
+        // Устанавливаем кулдаун
+        specialAbilityCooldownRemaining = Mathf.RoundToInt(specialAbilityCooldown);
+
+        // Используем очко действия
+        hasActedThisTurn = true;
+
+        // Выполняем логику способности в зависимости от типа
+        bool success = ExecuteSpecialAbility(target, targetPosition);
+
+        // Запускаем визуальный эффект, если есть
+        if (success && specialAbilityVisualEffect != null)
+        {
+            GameObject effect = Instantiate(specialAbilityVisualEffect, transform.position, Quaternion.identity);
+            Destroy(effect, 3f); // Удаляем через 3 секунды
+        }
+
+        // Для ShieldBarrier не показываем эффект в общем блоке, так как он уже показан в AddShield
+        if (success && abilitiesUI != null && specialAbilityType != SpecialAbilityType.ShieldBarrier)
+        {
+            var abilitySettings = abilitiesUI.GetAbilityEffectSettings(specialAbilityType);
+            if (abilitySettings != null && abilitySettings.effectIcon != null)
+            {
+                // Используем цвет панели из настроек или генерируем на основе типа способности
+                Color panelColor = abilitySettings.panelColor.a > 0 ?
+                    abilitySettings.panelColor : GetPanelColorForAbilityType(specialAbilityType);
+
+                ShowEffectOnPanel(abilitySettings.effectIcon, abilitySettings.effectDisplayType,
+                    panelColor, abilitySettings.effectDuration, abilitySettings.effectTurns);
+            }
+        }
+
+        OnAbilityUsed?.Invoke(this, specialAbilityType, success);
+        return success;
+    }
+
+    private bool ExecuteSpecialAbility(Unit target, Vector3? targetPosition)
+    {
+        switch (specialAbilityType)
+        {
+            case SpecialAbilityType.ArtilleryStrike:
+                // Артиллерийский удар по области
+                return ExecuteArtilleryStrike(targetPosition);
+
+            case SpecialAbilityType.ShieldBarrier:
+                // Защитный барьер
+                AddShield(specialAbilityValue);
+                Debug.Log($"{name} activates Shield Barrier! Shield: {specialAbilityValue}");
+                return true;
+
+            case SpecialAbilityType.MedicHeal:
+                // Лечение цели или себя
+                return ExecuteMedicHeal(target);
+
+            case SpecialAbilityType.Teleport:
+                // Телепортация
+                Debug.Log($"{name} uses Teleport! Range: {specialAbilityRange}");
+                // Здесь будет логика телепортации
+                return true;
+
+            case SpecialAbilityType.Grenade:
+                // Бросок гранаты
+                Debug.Log($"{name} throws Grenade! Damage: {specialAbilityValue}, Radius: {specialAbilityEffectRadius}");
+                // Здесь будет логика броска гранаты
+                return true;
+
+            case SpecialAbilityType.SmokeScreen:
+                // Дымовая завеса
+                Debug.Log($"{name} deploys Smoke Screen! Radius: {specialAbilityEffectRadius}");
+                // Здесь будет логика создания дымовой завесы
+                return true;
+
+            case SpecialAbilityType.Berserk:
+                // Берсерк - усиление атаки
+                baseDamage += specialAbilityValue;
+                Debug.Log($"{name} goes Berserk! Damage increased by {specialAbilityValue}");
+                return true;
+
+            case SpecialAbilityType.ReconScan:
+                // Разведка - раскрытие врагов
+                Debug.Log($"{name} performs Recon Scan! Range: {specialAbilityRange}");
+                // Здесь будет логика раскрытия врагов
+                return true;
+
+            case SpecialAbilityType.EMP:
+                // ЭМИ-импульс - отключение техники
+                Debug.Log($"{name} activates EMP! Range: {specialAbilityRange}");
+                // Здесь будет логика отключения техники врага
+                return true;
+
+            case SpecialAbilityType.Charge:
+                // Рывок - уже обрабатывается отдельным методом
+                Debug.Log($"{name} uses Charge! This should be handled by UseChargeAbility()");
+                return false;
+
+            case SpecialAbilityType.Custom1:
+            case SpecialAbilityType.Custom2:
+            case SpecialAbilityType.Custom3:
+                // Кастомные способности
+                Debug.Log($"{name} uses custom ability: {specialAbilityType}");
+                return true;
+
+            default:
+                Debug.LogWarning($"Unknown ability type: {specialAbilityType}");
+                return false;
+        }
+    }
+
+    // НОВЫЙ МЕТОД: Выполнение артиллерийского удара
+    private bool ExecuteArtilleryStrike(Vector3? targetPosition)
+    {
+        if (!targetPosition.HasValue)
+        {
+            Debug.LogWarning("Artillery Strike requires a target position!");
+            return false;
+        }
+
+        Debug.Log($"{name} uses Artillery Strike! Damage: {specialAbilityValue}, Range: {specialAbilityRange}, Explosion Radius: {specialAbilityEffectRadius}");
+
+        bool cellOccupied = false;
+        HexCell targetCell = FindCellAtPosition(targetPosition.Value);
+
+        // Проверяем, занята ли клетка юнитом
+        if (targetCell != null && targetCell.occupiedUnit != null)
+        {
+            cellOccupied = true;
+        }
+
+        // Спавним бомбу, только если клетка не занята юнитом
+        if (!cellOccupied && artilleryBombPrefab != null)
+        {
+            Vector3 bombPosition = targetPosition.Value + Vector3.up * 2f; // Немного выше земли
+            GameObject bomb = Instantiate(artilleryBombPrefab, bombPosition, Quaternion.identity);
+
+            // Настраиваем бомбу
+            ArtilleryBomb bombScript = bomb.GetComponent<ArtilleryBomb>();
+            if (bombScript == null)
+            {
+                bombScript = bomb.AddComponent<ArtilleryBomb>();
+            }
+
+            bombScript.damage = specialAbilityValue;
+            bombScript.explosionRange = specialAbilityEffectRadius; // ИСПРАВЛЕНО: Используем радиус эффекта
+            bombScript.owner = this;
+            bombScript.explosionDelay = 2f; // Можно настроить
+
+            Debug.Log($"{name} spawned artillery bomb at {targetPosition.Value}, explosion radius: {specialAbilityEffectRadius}");
+
+            // Уничтожаем через 3 секунды (время на взрыв + запас)
+            Destroy(bomb, 3f);
+        }
+        else if (cellOccupied)
+        {
+            Debug.Log($"{name} artillery strike on occupied cell - immediate explosion with radius {specialAbilityEffectRadius}");
+            // Если клетка занята, сразу наносим урон
+            ApplyArtilleryDamage(targetPosition.Value, specialAbilityValue, specialAbilityEffectRadius);
+        }
+
+        return true;
+    }
+
+    // НОВЫЙ МЕТОД: Выполнение лечения медика
+    private bool ExecuteMedicHeal(Unit target)
+    {
+        Unit healTarget = target ?? this;
+
+        // Проверяем, что цель - союзник
+        if (healTarget != this &&
+            !((healTarget.CompareTag("selected_unit") && this.CompareTag("selected_unit")) ||
+              (healTarget.CompareTag("enemy_unit") && this.CompareTag("enemy_unit"))))
+        {
+            Debug.LogWarning($"Medic Heal can only target allies or self!");
+            return false;
+        }
+
+        // Восстанавливаем здоровье
+        int healAmount = specialAbilityValue;
+        healTarget.Heal(healAmount);
+
+        // Восстанавливаем энергию (в 2 раза меньше)
+        int energyRestore = Mathf.Max(1, healAmount / 2);
+        healTarget.RestoreEnergy(energyRestore);
+
+        Debug.Log($"{name} uses Medic Heal on {healTarget.name}! Heal: {healAmount}, Energy: {energyRestore}");
+
+        // Показываем эффект лечения на панели
+        if (abilitiesUI != null)
+        {
+            var abilitySettings = abilitiesUI.GetAbilityEffectSettings(SpecialAbilityType.MedicHeal);
+            if (abilitySettings != null && abilitySettings.effectIcon != null)
+            {
+                Color panelColor = abilitySettings.panelColor.a > 0 ?
+                    abilitySettings.panelColor : healPanelColor;
+
+                ShowEffectOnPanel(abilitySettings.effectIcon, abilitySettings.effectDisplayType,
+                    panelColor, abilitySettings.effectDuration, abilitySettings.effectTurns);
+            }
+        }
+
+        return true;
+    }
+
+    // Вспомогательный метод для поиска клетки по позиции
+    private HexCell FindCellAtPosition(Vector3 position)
+    {
+        Ray ray = new Ray(position + Vector3.up * 10f, Vector3.down);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, 20f, hexLayerMask))
+        {
+            HexCell cell = hit.collider.GetComponent<HexCell>();
+            if (cell != null) return cell;
+        }
+
+        // Ищем через OverlapSphere как запасной вариант
+        Collider[] colliders = Physics.OverlapSphere(position, 1f, hexLayerMask);
+        foreach (Collider collider in colliders)
+        {
+            HexCell cell = collider.GetComponent<HexCell>();
+            if (cell != null) return cell;
+        }
+
+        return null;
+    }
+
+    // Вспомогательный метод для нанесения урона артиллерией
+    private void ApplyArtilleryDamage(Vector3 center, int damage, float range)
+    {
+        // Находим все юниты в радиусе эффекта
+        Collider[] colliders = Physics.OverlapSphere(center, range);
+
+        foreach (Collider collider in colliders)
+        {
+            Unit unit = collider.GetComponent<Unit>();
+            if (unit != null && unit != this && unit.IsAlive())
+            {
+                int finalDamage = damage;
+
+                // Если это союзник - половина урона
+                if ((unit.CompareTag("selected_unit") && this.CompareTag("selected_unit")) ||
+                    (unit.CompareTag("enemy_unit") && this.CompareTag("enemy_unit")))
+                {
+                    finalDamage = Mathf.Max(1, damage / 2);
+                }
+
+                unit.TakeDamage(finalDamage, this);
+                Debug.Log($"Artillery explosion hit {unit.name} for {finalDamage} damage");
+            }
+        }
+    }
+
+    // Геттеры для UI
+    public bool HasChargeAbility() => hasChargeAbility;
+    public bool HasSpecialAbility() => hasSpecialAbility && specialAbilityType != SpecialAbilityType.None;
+    public SpecialAbilityType GetSpecialAbilityType() => specialAbilityType;
+
+    public string GetSpecialAbilityName()
+    {
+        switch (specialAbilityType)
+        {
+            case SpecialAbilityType.None: return "Нет";
+            case SpecialAbilityType.ArtilleryStrike: return "Артиллерия";
+            case SpecialAbilityType.ShieldBarrier: return "Щит";
+            case SpecialAbilityType.MedicHeal: return "Лечение";
+            case SpecialAbilityType.Teleport: return "Телепорт";
+            case SpecialAbilityType.Grenade: return "Граната";
+            case SpecialAbilityType.SmokeScreen: return "Дым";
+            case SpecialAbilityType.Berserk: return "Берсерк";
+            case SpecialAbilityType.ReconScan: return "Разведка";
+            case SpecialAbilityType.EMP: return "ЭМИ";
+            case SpecialAbilityType.Charge: return "Рывок";
+            case SpecialAbilityType.Custom1: return "Способность 1";
+            case SpecialAbilityType.Custom2: return "Способность 2";
+            case SpecialAbilityType.Custom3: return "Способность 3";
+            default: return "Неизвестно";
+        }
+    }
+
+    public int GetSpecialAbilityEnergyCost() => specialAbilityEnergyCost;
+    public int GetSpecialAbilityCooldownRemaining() => specialAbilityCooldownRemaining;
+    public int GetSpecialAbilityCooldownTotal() => Mathf.RoundToInt(specialAbilityCooldown);
+
+    public int GetChargeEnergyCost() => chargeEnergyCost;
+    public int GetChargeCooldownRemaining() => chargeCooldownRemaining;
+    public int GetChargeCooldownTotal() => Mathf.RoundToInt(chargeCooldown);
+
+    public bool IsChargeActive() => chargeUsedThisTurn;
+
+    // НОВЫЕ ГЕТТЕРЫ ДЛЯ ДОСТАВКА К РАДИУСАМ
+    public float GetSpecialAbilityRange() => specialAbilityRange;
+    public float GetSpecialAbilityEffectRadius() => specialAbilityEffectRadius;
+
+    // Оригинальные методы остаются без изменений
+    void FindAndSnapToCell()
+    {
+        HexCell[] allCells = FindObjectsOfType<HexCell>();
+        HexCell closestCell = null;
+        float closestDistance = float.MaxValue;
+
+        foreach (HexCell cell in allCells)
+        {
+            if (!cell.isWalkable || cell.occupiedUnit != null) continue;
+
+            float distance = Vector3.Distance(transform.position, cell.transform.position);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestCell = cell;
+            }
+        }
+
+        if (closestCell != null)
+        {
+            SnapToCell(closestCell);
+        }
+    }
+
+    public void SnapToCell(HexCell cell)
+    {
+        if (cell == null || isSnappingToCell) return;
+
+        isSnappingToCell = true;
+
+        // Освобождаем предыдущую клетку
+        if (currentCell != null && currentCell != cell)
+        {
+            currentCell.occupiedUnit = null;
+        }
+
+        // Привязываемся к новой клетке
+        currentCell = cell;
+        currentCell.occupiedUnit = this;
+
+        // Перемещаем юнита точно в центр клетки
+        Vector3 targetPosition = cell.transform.position + Vector3.up * 0.5f;
+        transform.position = targetPosition;
+
+        isSnappingToCell = false;
+    }
+
+    public void StartMovement(List<HexCell> path, HexGridGenerator gridGenerator)
+    {
+        if (path == null || path.Count < 2)
+        {
+            Debug.LogError("Invalid path!");
+            return;
+        }
+
+        if (isMoving)
+        {
+            Debug.LogWarning("Unit is already moving!");
+            return;
+        }
+
+        if (hasMovedThisTurn)
+        {
+            Debug.LogWarning("Unit has already moved this turn!");
+            return;
+        }
+
+        // Рассчитываем стоимость пути
+        int pathCost = CalculatePathCost(path);
+
+        if (pathCost > currentMovementPoints)
+        {
+            Debug.LogError($"Not enough movement points! Need {pathCost}, have {currentMovementPoints}");
+            return;
+        }
+
+        // Проверяем, что путь прямой (каждая клетка - сосед предыдущей)
+        for (int i = 1; i < path.Count; i++)
+        {
+            if (!AreNeighbors(path[i - 1], path[i]))
+            {
+                Debug.LogError($"Invalid path: cells {path[i - 1].gridPosition} and {path[i].gridPosition} are not neighbors!");
+                return;
+            }
+        }
+
+        // Освобождаем текущую клетку
+        if (currentCell != null)
+        {
+            currentCell.occupiedUnit = null;
+        }
+
+        // Сохраняем путь
+        currentPath = path;
+
+        // Тратим очки движения
+        currentMovementPoints -= pathCost;
+        hasMovedThisTurn = true;
+
+        // Запускаем корутину движения
+        if (movementCoroutine != null)
+            StopCoroutine(movementCoroutine);
+
+        movementCoroutine = StartCoroutine(MoveAlongPath());
+    }
+
+    IEnumerator MoveAlongPath()
+    {
+        isMoving = true;
+
+        for (int i = 1; i < currentPath.Count; i++)
+        {
+            HexCell targetCell = currentPath[i];
+            Vector3 startPosition = transform.position;
+            Vector3 targetPosition = targetCell.transform.position + Vector3.up * 0.5f;
+
+            // Поворачиваемся к цели
+            yield return StartCoroutine(RotateTowards(targetPosition));
+
+            // Движение с ускорением и замедлением
+            float distance = Vector3.Distance(startPosition, targetPosition);
+            float moveTime = distance / movementSpeed;
+
+            // Ускорение
+            float accelerationTimer = 0f;
+            while (accelerationTimer < accelerationTime)
+            {
+                accelerationTimer += Time.deltaTime;
+                float t = accelerationTimer / accelerationTime;
+                currentSpeedMultiplier = accelerationCurve.Evaluate(t);
+
+                transform.position = Vector3.MoveTowards(
+                    transform.position,
+                    targetPosition,
+                    movementSpeed * currentSpeedMultiplier * Time.deltaTime
+                );
+                yield return null;
+            }
+
+            // Основное движение
+            while (Vector3.Distance(transform.position, targetPosition) > 0.05f)
+            {
+                transform.position = Vector3.MoveTowards(
+                    transform.position,
+                    targetPosition,
+                    movementSpeed * Time.deltaTime
+                );
+                yield return null;
+            }
+
+            // Финализируем позицию
+            transform.position = targetPosition;
+
+            // Обновляем текущую клетку
+            currentCell = targetCell;
+            currentCell.occupiedUnit = this;
+        }
+
+        FinishMovement();
+    }
+
+    IEnumerator RotateTowards(Vector3 targetPosition)
+    {
+        Vector3 direction = (targetPosition - transform.position).normalized;
+        if (direction == Vector3.zero || direction.magnitude < 0.1f) yield break;
+
+        Quaternion targetRotation = Quaternion.LookRotation(direction);
+        float angle = Quaternion.Angle(transform.rotation, targetRotation);
+
+        if (angle < 1f) yield break;
+
+        float rotationDuration = angle / (rotationSpeed * 100f);
+        float timer = 0f;
+        Quaternion startRotation = transform.rotation;
+
+        while (timer < rotationDuration)
+        {
+            timer += Time.deltaTime;
+            float t = timer / rotationDuration;
+            transform.rotation = Quaternion.Slerp(startRotation, targetRotation, t);
+            yield return null;
+        }
+
+        transform.rotation = targetRotation;
+    }
+
+    void FinishMovement()
+    {
+        currentPath = null;
+        pathIndex = 0;
+        isMoving = false;
+        currentSpeedMultiplier = 1f;
+
+        Debug.Log($"Unit finished movement at {currentCell.gridPosition}");
+    }
+
+    int CalculatePathCost(List<HexCell> path)
+    {
+        if (path == null || path.Count < 2) return 0;
+
+        int totalCost = 0;
+        for (int i = 1; i < path.Count; i++)
+        {
+            if (path[i] != null)
+            {
+                totalCost += Mathf.RoundToInt(path[i].moveCost);
+            }
+        }
+        return totalCost;
+    }
+
+    // Проверка, являются ли клетки соседями
+    bool AreNeighbors(HexCell cellA, HexCell cellB)
+    {
+        if (cellA == null || cellB == null) return false;
+
+        int distance = cellA.GetDistanceTo(cellB);
+        return distance == 1;
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        if (currentPath != null && currentPath.Count > 0)
+        {
+            Gizmos.color = Color.green;
+            for (int i = 0; i < currentPath.Count - 1; i++)
+            {
+                if (currentPath[i] != null && currentPath[i + 1] != null)
+                {
+                    Vector3 from = currentPath[i].transform.position + Vector3.up * 0.2f;
+                    Vector3 to = currentPath[i + 1].transform.position + Vector3.up * 0.2f;
+                    Gizmos.DrawLine(from, to);
+                    Gizmos.DrawSphere(from, 0.1f);
+                }
+            }
+        }
+
+        // Рисуем радиус атаки
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, attackRange);
+
+        // Рисуем радиус способности
+        Gizmos.color = Color.blue;
+        Gizmos.DrawWireSphere(transform.position, specialAbilityRange);
+
+        // Рисуем радиус эффекта способности
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(transform.position, specialAbilityEffectRadius);
+    }
+    public HexCellV2 currentCellV2 { get; private set; }
+
+    public void SetCurrentCellV2(HexCellV2 cell)
+    {
+        currentCellV2 = cell;
+    }
+
+}

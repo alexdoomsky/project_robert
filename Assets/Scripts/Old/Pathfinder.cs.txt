@@ -1,0 +1,79 @@
+using System.Collections.Generic;
+using System.Linq;
+
+public static class Pathfinder
+{
+    public static List<HexCell> FindPath(
+        HexCell start,
+        HexCell target,
+        Dictionary<HexCoordinates, HexCell> grid)
+    {
+        foreach (var cell in grid.Values)
+        {
+            cell.gCost = int.MaxValue;
+            cell.hCost = 0;
+            cell.parent = null;
+        }
+
+        start.gCost = 0;
+        start.hCost = start.GetDistanceTo(target);
+
+        var openSet = new List<HexCell> { start };
+        var closedSet = new HashSet<HexCell>();
+
+        while (openSet.Count > 0)
+        {
+            var current = openSet
+                .OrderBy(c => c.FCost)
+                .ThenBy(c => c.hCost)
+                .First();
+
+            if (current == target)
+                return ReconstructPath(current);
+
+            openSet.Remove(current);
+            closedSet.Add(current);
+
+            foreach (var neighborCoord in current.GetNeighborCoords())
+            {
+                if (!grid.TryGetValue(neighborCoord, out var neighbor))
+                    continue;
+
+                if (neighbor.IsBlockedForMovement() && neighbor != target)
+                    continue;
+
+                if (closedSet.Contains(neighbor))
+                    continue;
+
+                int tentativeG = current.gCost + neighbor.moveCost;
+
+                if (tentativeG < neighbor.gCost)
+                {
+                    neighbor.parent = current;
+                    neighbor.gCost = tentativeG;
+                    neighbor.hCost = neighbor.GetDistanceTo(target);
+
+                    if (!openSet.Contains(neighbor))
+                        openSet.Add(neighbor);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static List<HexCell> ReconstructPath(HexCell end)
+    {
+        var path = new List<HexCell>();
+        var current = end;
+
+        while (current != null)
+        {
+            path.Add(current);
+            current = current.parent;
+        }
+
+        path.Reverse();
+        return path;
+    }
+}

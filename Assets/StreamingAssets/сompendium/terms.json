@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "terms": [
+    { "id": "status_barrier", "displayName": "Barrier", "tooltipKey": "Barrier" },
+	{ "id": "status_aiming", "displayName": "Calling", "tooltipKey": "Aiming" },
+	{ "id": "status_dash", "displayName": "Charge", "tooltipKey": "Dash" },
+	{ "id": "status_dormant", "displayName": "Dormant", "tooltipKey": "Dormant" }
+  ]
+}

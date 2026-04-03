@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 027c28ae88fdf19448ba21241db68661, type: 3}
+  m_Name: BattleRewardsConfigV2
+  m_EditorClassIdentifier: Assembly-CSharp::BattleRewardsConfigV2
+  baseWinMaterials: 100
+  baseLoseMaterials: 50
+  loseRunHpOnDefeat: 20
+  salvageMultiplierWin: 1
+  salvageMultiplierLose: 0.3
+  enemySalvage:
+  - archetype: 0
+    salvageValue: 1
+  - archetype: 1
+    salvageValue: 50
+  - archetype: 2
+    salvageValue: 300
+  - archetype: 3
+    salvageValue: 100
+  playerUnitSalvage:
+  - unitId: common
+    salvageValue: 25
+  - unitId: art
+    salvageValue: 45
+  - unitId: medic
+    salvageValue: 20
+  - unitId: shield
+    salvageValue: 30
+  healChanceWin: 0.25
+  healChanceLose: 0
+  healChargesAward: 1
+  droneChanceWin: 0.1
+  droneChanceLose: 0
+  dronesAward: 2

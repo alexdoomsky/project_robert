@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7fc51a8a8bf2d34aac6722081eabb32, type: 3}
+  m_Name: Artilery
+  m_EditorClassIdentifier: Assembly-CSharp::AbilityDefV2
+  abilityName: artillery
+  description: casting unit cant move or attack of 1 turn, after that on chosen cell
+    happen an exploison that deal damage to everything in area
+  kind: 3
+  targetMode: 2
+  actionCost: 1
+  energyCost: 1
+  cooldownRounds: 2
+  minRange: 3
+  maxRange: 10
+  aoeRadius: 2
+  dashMoveMultiplier: 0
+  dashDodgeMultiplier: 0
+  dashDurationRounds: 0
+  barrierMaxHP: 0
+  barrierAbsorbPercent: 0
+  barrierDurationRounds: 0
+  barrierRegenPerRound: 0
+  healHP: 0
+  restoreEnergy: 0
+  artilleryDamage: 200
+  artilleryDelayRounds: 1
+  followCasterIfMoved: 0
+  scatterOnCasterDeath: 1
+  scatterRadiusOnDeath: 3
+  telegraphPrefab: {fileID: 1672371239696130077, guid: 768b8fd296aed374cb24af2bd31e54ee, type: 3}
+  showAoePreview: 1
+  aoePreviewColor: {r: 1, g: 0, b: 0.029678345, a: 1}

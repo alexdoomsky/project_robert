@@ -1,0 +1,117 @@
+﻿using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+
+public class UnitSpawner : MonoBehaviour
+{
+    [Header("Grid")]
+    public HexGridGenerator hexGridGenerator;
+
+    [Header("Spawn Prefabs")]
+    public GameObject[] playerUnits;
+    public GameObject[] enemyUnits;
+
+    [Header("Spawn Settings")]
+    [Tooltip("Сколько клеток с краёв ряда нельзя занимать (для красоты)")]
+    public int sidePadding = 0;
+
+    [Tooltip("Если включено, спавн отменится, если не хватило клеток")]
+    public bool failIfNotEnoughCells = false;
+
+    void Start()
+    {
+        StartCoroutine(SpawnWhenGridReady());
+    }
+
+    private IEnumerator SpawnWhenGridReady()
+    {
+        if (!hexGridGenerator)
+            hexGridGenerator = FindObjectOfType<HexGridGenerator>();
+
+        // ждём пока grid реально заполнится
+        float timeout = 3f;
+        while ((hexGridGenerator == null || hexGridGenerator.Grid == null || hexGridGenerator.Grid.Count == 0) && timeout > 0f)
+        {
+            timeout -= Time.deltaTime;
+            yield return null;
+        }
+
+        if (hexGridGenerator == null || hexGridGenerator.Grid == null || hexGridGenerator.Grid.Count == 0)
+        {
+            Debug.LogError("UnitSpawner: grid is empty. Generate grid first.");
+            yield break;
+        }
+
+        SpawnAll();
+    }
+
+    public void SpawnAll()
+    {
+        var grid = hexGridGenerator.Grid;
+
+        int bottomRow = 0;
+        int topRow = hexGridGenerator.Height - 1;
+
+        SpawnRow(playerUnits, bottomRow, isEnemy: false, grid);
+        SpawnRow(enemyUnits, topRow, isEnemy: true, grid);
+    }
+
+    private void SpawnRow(GameObject[] unitPrefabs, int row, bool isEnemy, IReadOnlyDictionary<HexCoordinates, HexCell> grid)
+    {
+        if (unitPrefabs == null || unitPrefabs.Length == 0) return;
+
+        // Берём клетки нужного ряда по offsetCoords.y
+        List<HexCell> rowCells = grid.Values
+            .Where(c => c != null && c.gridPosition.y == row)
+            .OrderBy(c => c.gridPosition.x)
+            .ToList();
+
+        // отрезаем края
+        if (sidePadding > 0 && rowCells.Count > sidePadding * 2)
+            rowCells = rowCells.Skip(sidePadding).Take(rowCells.Count - sidePadding * 2).ToList();
+
+        // фильтруем занятые/непроходимые
+        rowCells = rowCells.Where(c => c != null && !c.IsBlockedForMovement()).ToList();
+
+        if (rowCells.Count < unitPrefabs.Length)
+        {
+            string msg = $"UnitSpawner: not enough free cells on row {row}. Need {unitPrefabs.Length}, have {rowCells.Count}.";
+            if (failIfNotEnoughCells)
+            {
+                Debug.LogError(msg);
+                return;
+            }
+            Debug.LogWarning(msg);
+        }
+
+        int count = Mathf.Min(unitPrefabs.Length, rowCells.Count);
+
+        // чтобы стояли “в ряд”, берем по порядку
+        for (int i = 0; i < count; i++)
+        {
+            SpawnUnit(unitPrefabs[i], rowCells[i], isEnemy);
+        }
+    }
+
+    private void SpawnUnit(GameObject prefab, HexCell cell, bool isEnemy)
+    {
+        if (!prefab || cell == null) return;
+
+        GameObject unitObj = Instantiate(prefab, cell.transform.position, prefab.transform.rotation);
+
+        // ВАЖНО: сохраняем scale префаба (на случай если у тебя в сцене родитель со scale != 1)
+        unitObj.transform.localScale = prefab.transform.localScale;
+
+        Unit unit = unitObj.GetComponent<Unit>();
+        if (unit != null)
+        {
+            unit.currentCell = cell;
+        }
+
+        cell.occupiedUnit = unit;
+
+        unitObj.tag = isEnemy ? "enemy_unit" : "selected_unit";
+        unitObj.layer = LayerMask.NameToLayer("Unit");
+    }
+}

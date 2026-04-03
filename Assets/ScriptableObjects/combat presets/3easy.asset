@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 921fc34c5a6e3974e978fa5ab77f4fa4, type: 3}
+  m_Name: 3easy
+  m_EditorClassIdentifier: Assembly-CSharp::BattleEncounterPresetV2
+  clusterCount: 0
+  clusterMinSize: 3
+  clusterMaxSize: 8
+  mineCount: 0
+  turretCount: 1
+  enemySpawns:
+  - prefab: {fileID: 5398567583131275580, guid: f4d6e8a9c15b0b74580131af7b894bb3, type: 3}
+    unitId: Raider
+    count: 2
+  - prefab: {fileID: 3271701713684876966, guid: bd304c242f524e846962b929cb4ce6b6, type: 3}
+    unitId: Bulldog
+    count: 4

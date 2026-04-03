@@ -1,0 +1,86 @@
+using UnityEngine;
+
+public class ArtilleryBomb : MonoBehaviour
+{
+    public int damage = 25;
+    public float explosionRange = 3f;
+    public Unit owner;
+    public float explosionDelay = 2f;
+
+    private bool hasExploded = false; // ИСПРАВЛЕНО: Флаг, чтобы предотвратить двойной взрыв
+
+    void Start()
+    {
+        // Запускаем таймер взрыва
+        Invoke("Explode", explosionDelay);
+    }
+
+    void Explode()
+    {
+        // Проверяем, не взорвалась ли уже бомба
+        if (hasExploded) return;
+        hasExploded = true;
+
+        Debug.Log($"Artillery bomb exploding at {transform.position} with radius {explosionRange}");
+
+        // Находим всех юнитов в радиусе взрыва
+        Collider[] colliders = Physics.OverlapSphere(transform.position, explosionRange);
+
+        bool hitAnyUnit = false;
+        foreach (Collider collider in colliders)
+        {
+            Unit unit = collider.GetComponent<Unit>();
+            if (unit != null && unit != owner && unit.IsAlive())
+            {
+                // Наносим урон
+                int finalDamage = damage;
+                unit.TakeDamage(finalDamage, owner);
+                hitAnyUnit = true;
+                Debug.Log($"Artillery bomb hit {unit.name} for {finalDamage} damage");
+            }
+        }
+
+        if (!hitAnyUnit)
+        {
+            Debug.Log("Artillery bomb exploded but hit no units");
+        }
+
+        // Визуальный эффект взрыва (опционально)
+        CreateExplosionEffect();
+
+        // Уничтожаем бомбу
+        Destroy(gameObject);
+    }
+
+    void CreateExplosionEffect()
+    {
+        // Создаем простой эффект взрыва
+        GameObject explosionSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        explosionSphere.transform.position = transform.position;
+        explosionSphere.transform.localScale = Vector3.one * explosionRange * 2f;
+
+        // Настраиваем материал
+        Renderer renderer = explosionSphere.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.material.color = new Color(1f, 0.5f, 0f, 0.5f);
+        }
+
+        // Убираем коллайдер, чтобы не мешал
+        Collider sphereCollider = explosionSphere.GetComponent<Collider>();
+        if (sphereCollider != null)
+        {
+            sphereCollider.enabled = false;
+        }
+
+        // Уничтожаем через 0.5 секунды
+        Destroy(explosionSphere, 0.5f);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        // Показываем радиус взрыва в редакторе
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, explosionRange);
+    }
+}

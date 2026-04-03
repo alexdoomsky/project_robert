@@ -1,0 +1,837 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections.Generic;
+using UnityEngine.EventSystems;
+
+public class UnitMovementController : MonoBehaviour
+{
+    public event System.Action OnTurnEnded;
+
+    [Header("References")]
+    public Camera gameCamera;
+    public HexGridGenerator hexGridGenerator;
+
+    [Header("Layer Masks")]
+    [SerializeField] private LayerMask hexLayerMask = -1;
+    [SerializeField] private LayerMask unitLayerMask = -1;
+
+    [Header("Colors (set in Inspector)")]
+    [SerializeField] private Color reachableColor = Color.green;
+    [SerializeField] private Color selectedColor = Color.yellow;
+    [SerializeField] private Color pathColor = Color.cyan;
+
+    [SerializeField] private Color attackRangeColor = Color.red;
+    [SerializeField] private Color attackAndMoveColor = Color.magenta;
+
+    [SerializeField] private Color enemySelectedColor = new Color(1f, 0.5f, 0f, 1f);
+    [SerializeField] private Color enemyInAttackColor = Color.red;
+    [SerializeField] private Color enemyHoverInAttackColor = Color.red;
+
+    [Header("Ability Targeting Colors (set in Inspector)")]
+    [SerializeField] private Color abilityRangeCellColor = Color.magenta;
+    [SerializeField] private Color abilityValidTargetCellColor = Color.cyan;
+    [SerializeField] private Color abilityHoverValidColor = Color.yellow;
+    [SerializeField] private Color abilityHoverInvalidColor = Color.red;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugMode = false;
+    [SerializeField] private bool controlEnemyUnits = false;
+
+    // Selection state
+    private Unit selectedUnit;
+    private HexCell hoveredCell;
+
+    // Highlight sets
+    private readonly HashSet<HexCell> reachableSet = new HashSet<HexCell>();
+    private readonly HashSet<HexCell> attackSet = new HashSet<HexCell>();
+    private readonly HashSet<HexCell> bothSet = new HashSet<HexCell>();
+    private readonly List<HexCell> currentPath = new List<HexCell>();
+
+    // Ability targeting state
+    private bool isSelectingAbilityTarget = false;
+    private Unit abilityCaster;
+    private Unit.SpecialAbilityType currentAbilityType = Unit.SpecialAbilityType.None;
+    private Unit.AbilityTarget requiredTargetType = Unit.AbilityTarget.Any;
+    private int abilityRangeHex = 0;
+
+    private readonly HashSet<HexCell> abilityRangeCells = new HashSet<HexCell>();
+    private readonly HashSet<Unit> abilityValidUnits = new HashSet<Unit>();
+
+    void Awake()
+    {
+        InitializeLayerMasks();
+    }
+
+    void Start()
+    {
+        if (gameCamera == null) gameCamera = Camera.main;
+        if (hexGridGenerator == null) hexGridGenerator = FindObjectOfType<HexGridGenerator>();
+    }
+
+    void Update()
+    {
+        if (isSelectingAbilityTarget)
+        {
+            UpdateAbilityTargetPreview();
+
+            // ПКМ подтверждение
+            if (Input.GetMouseButtonDown(1))
+                HandleRightClickForAbility();
+
+            // ЛКМ или ESC отмена
+            if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Escape))
+                CancelAbilitySelection();
+
+            // не даём обычному режиму вмешиваться
+            return;
+        }
+
+        UpdatePathPreview();
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (IsPointerOverUIElement()) return;
+            HandleLeftClick();
+        }
+
+        if (Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Escape))
+            ClearSelection();
+
+        if (Input.GetKeyDown(KeyCode.Tab))
+            ToggleControlMode();
+    }
+
+    void InitializeLayerMasks()
+    {
+        if (hexLayerMask.value == -1)
+        {
+            int hexLayer = LayerMask.NameToLayer("Hex");
+            if (hexLayer != -1) hexLayerMask = 1 << hexLayer;
+        }
+
+        if (unitLayerMask.value == -1)
+        {
+            int unitLayer = LayerMask.NameToLayer("Unit");
+            if (unitLayer != -1) unitLayerMask = 1 << unitLayer;
+        }
+    }
+
+    private bool IsPointerOverUIElement()
+    {
+        if (EventSystem.current == null) return false;
+        if (EventSystem.current.IsPointerOverGameObject()) return true;
+
+        var eventData = new PointerEventData(EventSystem.current) { position = Input.mousePosition };
+        var results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(eventData, results);
+
+        foreach (var result in results)
+        {
+            if (result.gameObject.layer == LayerMask.NameToLayer("UI")) return true;
+
+            if (result.gameObject.GetComponent<Button>() != null ||
+                result.gameObject.GetComponent<Image>() != null ||
+                result.gameObject.GetComponent<Text>() != null ||
+                result.gameObject.GetComponent<TMP_Text>() != null ||
+                result.gameObject.GetComponent<Slider>() != null ||
+                result.gameObject.GetComponent<Toggle>() != null)
+                return true;
+        }
+
+        return false;
+    }
+
+    void ToggleControlMode()
+    {
+        controlEnemyUnits = !controlEnemyUnits;
+        ClearSelection();
+    }
+
+    // НУЖНО ДЛЯ GameDebugUI
+    public void SwitchToPlayerControl()
+    {
+        controlEnemyUnits = false;
+        ClearSelection();
+    }
+
+    // НУЖНО ДЛЯ GameDebugUI
+    public void SwitchToEnemyControl()
+    {
+        controlEnemyUnits = true;
+        ClearSelection();
+    }
+
+    bool CanControlUnit(Unit unit)
+    {
+        if (unit == null) return false;
+        return controlEnemyUnits ? unit.CompareTag("enemy_unit") : unit.CompareTag("selected_unit");
+    }
+
+    void HandleLeftClick()
+    {
+        Ray ray = gameCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+
+        // 1) units
+        if (Physics.Raycast(ray, out hit, 1000f, unitLayerMask))
+        {
+            Unit unit = hit.collider.GetComponent<Unit>();
+            if (unit != null)
+            {
+                if (CanControlUnit(unit))
+                {
+                    SelectUnit(unit);
+                    return;
+                }
+
+                if (selectedUnit != null && !selectedUnit.isMoving && IsInAttackRange(selectedUnit, unit))
+                {
+                    AttackTarget(unit);
+                    return;
+                }
+            }
+        }
+
+        // 2) hexes
+        if (Physics.Raycast(ray, out hit, 1000f, hexLayerMask))
+        {
+            HexCell clickedCell = hit.collider.GetComponent<HexCell>();
+            if (clickedCell == null)
+            {
+                ClearSelection();
+                return;
+            }
+
+            if (selectedUnit != null && !selectedUnit.isMoving)
+            {
+                if (clickedCell.occupiedUnit != null && clickedCell.occupiedUnit != selectedUnit)
+                {
+                    if (IsInAttackRange(selectedUnit, clickedCell.occupiedUnit))
+                    {
+                        AttackTarget(clickedCell.occupiedUnit);
+                        return;
+                    }
+                }
+
+                if (reachableSet.Contains(clickedCell) && clickedCell.occupiedUnit == null && !clickedCell.occupiedByObject)
+                {
+                    MoveSelectedUnitTo(clickedCell);
+                    return;
+                }
+
+                ClearSelection();
+                return;
+            }
+
+            if (clickedCell.occupiedUnit != null && CanControlUnit(clickedCell.occupiedUnit))
+            {
+                SelectUnit(clickedCell.occupiedUnit);
+                return;
+            }
+
+            ClearSelection();
+            return;
+        }
+
+        ClearSelection();
+    }
+
+    void SelectUnit(Unit unit)
+    {
+        if (unit == null || unit.isMoving) return;
+
+        selectedUnit = unit;
+
+        if (selectedUnit.currentCell == null)
+            FindCellForUnit(selectedUnit);
+
+        RebuildRangesAndHighlights();
+
+        if (selectedUnit.currentCell != null)
+            selectedUnit.currentCell.SetHighlight(controlEnemyUnits ? enemySelectedColor : selectedColor);
+    }
+
+    public void FindCellForUnit(Unit unit)
+    {
+        if (hexGridGenerator == null) return;
+        var grid = hexGridGenerator.Grid;
+        if (grid == null) return;
+
+        HexCell closest = null;
+        float best = float.MaxValue;
+
+        foreach (var kvp in grid)
+        {
+            var cell = kvp.Value;
+            if (cell == null || !cell.isWalkable || cell.occupiedUnit != null || cell.occupiedByObject) continue;
+
+            float d = Vector3.Distance(unit.transform.position, cell.transform.position);
+            if (d < best)
+            {
+                best = d;
+                closest = cell;
+            }
+        }
+
+        if (closest != null)
+        {
+            unit.currentCell = closest;
+            closest.occupiedUnit = unit;
+        }
+    }
+
+    void AttackTarget(Unit targetUnit)
+    {
+        if (selectedUnit == null || targetUnit == null || selectedUnit == targetUnit) return;
+        if (!IsInAttackRange(selectedUnit, targetUnit)) return;
+        if (!selectedUnit.CanAct()) return;
+
+        selectedUnit.Attack(targetUnit);
+        ClearSelection();
+    }
+
+    bool IsInAttackRange(Unit attacker, Unit target)
+    {
+        if (attacker == null || target == null) return false;
+        if (attacker.currentCell == null || target.currentCell == null) return false;
+
+        int dist = attacker.currentCell.GetDistanceTo(target.currentCell);
+        return dist <= Mathf.RoundToInt(attacker.attackRange);
+    }
+
+    void MoveSelectedUnitTo(HexCell targetCell)
+    {
+        if (selectedUnit == null || selectedUnit.isMoving) return;
+        if (targetCell == null) return;
+
+        var grid = hexGridGenerator.Grid;
+        var path = FindPathAStar(selectedUnit.currentCell, targetCell, grid);
+
+        if (path == null || path.Count < 2) return;
+
+        selectedUnit.StartMovement(path, hexGridGenerator);
+        ClearSelection();
+    }
+
+    void UpdatePathPreview()
+    {
+        if (selectedUnit == null || selectedUnit.isMoving)
+        {
+            hoveredCell = null;
+            ClearPathOverlay();
+            return;
+        }
+
+        Ray ray = gameCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+        HexCell newHover = null;
+
+        if (Physics.Raycast(ray, out hit, 1000f, hexLayerMask))
+            newHover = hit.collider.GetComponent<HexCell>();
+
+        if (newHover == hoveredCell) return;
+        hoveredCell = newHover;
+
+        ClearPathOverlay();
+
+        if (hoveredCell != null && reachableSet.Contains(hoveredCell) && hoveredCell.occupiedUnit == null && !hoveredCell.occupiedByObject)
+        {
+            var grid = hexGridGenerator.Grid;
+            var path = FindPathAStar(selectedUnit.currentCell, hoveredCell, grid);
+            if (path != null && path.Count > 1)
+                ApplyPathOverlay(path);
+        }
+        else if (hoveredCell != null && hoveredCell.occupiedUnit != null && attackSet.Contains(hoveredCell))
+        {
+            hoveredCell.SetHighlight(enemyHoverInAttackColor);
+        }
+    }
+
+    void ClearSelection()
+    {
+        if (isSelectingAbilityTarget)
+            CancelAbilitySelection();
+
+        selectedUnit = null;
+        hoveredCell = null;
+
+        ClearAllHighlights();
+        reachableSet.Clear();
+        attackSet.Clear();
+        bothSet.Clear();
+        currentPath.Clear();
+    }
+
+    // ====== Highlights ======
+
+    void RebuildRangesAndHighlights()
+    {
+        reachableSet.Clear();
+        attackSet.Clear();
+        bothSet.Clear();
+        currentPath.Clear();
+
+        ClearAllHighlights();
+
+        if (selectedUnit == null || selectedUnit.currentCell == null || hexGridGenerator == null) return;
+
+        var grid = hexGridGenerator.Grid;
+        if (grid == null) return;
+
+        int mp = Mathf.Max(0, selectedUnit.GetCurrentMovementPoints());
+        if (mp > 0)
+        {
+            foreach (var cell in GetReachableCellsBFS(selectedUnit.currentCell, mp, grid))
+                reachableSet.Add(cell);
+        }
+
+        int range = Mathf.Max(0, Mathf.RoundToInt(selectedUnit.attackRange));
+        if (range > 0)
+        {
+            foreach (var kvp in grid)
+            {
+                var cell = kvp.Value;
+                if (cell == null || cell == selectedUnit.currentCell) continue;
+
+                int dist = selectedUnit.currentCell.GetDistanceTo(cell);
+                if (dist <= range)
+                    attackSet.Add(cell);
+            }
+        }
+
+        foreach (var cell in reachableSet)
+            if (attackSet.Contains(cell))
+                bothSet.Add(cell);
+
+        ApplyBaseHighlights();
+    }
+
+    void ApplyBaseHighlights()
+    {
+        if (hexGridGenerator == null) return;
+        var grid = hexGridGenerator.Grid;
+        if (grid == null) return;
+
+        foreach (var kvp in grid)
+        {
+            var cell = kvp.Value;
+            if (cell != null) cell.ResetHighlight();
+        }
+
+        foreach (var cell in reachableSet)
+        {
+            if (cell == null) continue;
+            if (cell.occupiedUnit != null) continue;
+            if (cell.occupiedByObject) continue;
+            cell.SetHighlight(reachableColor);
+        }
+
+        foreach (var cell in attackSet)
+        {
+            if (cell == null) continue;
+            if (cell == selectedUnit?.currentCell) continue;
+            if (bothSet.Contains(cell)) continue;
+
+            cell.SetHighlight(attackRangeColor);
+
+            if (cell.occupiedUnit != null && cell.occupiedUnit != selectedUnit)
+                cell.SetHighlight(enemyInAttackColor);
+        }
+
+        foreach (var cell in bothSet)
+        {
+            if (cell == null) continue;
+            if (cell.occupiedUnit != null) continue;
+            if (cell.occupiedByObject) continue;
+            cell.SetHighlight(attackAndMoveColor);
+        }
+
+        if (selectedUnit != null && selectedUnit.currentCell != null)
+            selectedUnit.currentCell.SetHighlight(controlEnemyUnits ? enemySelectedColor : selectedColor);
+    }
+
+    void ApplyPathOverlay(List<HexCell> path)
+    {
+        currentPath.Clear();
+        currentPath.AddRange(path);
+
+        foreach (var cell in currentPath)
+        {
+            if (cell == null) continue;
+            if (cell == selectedUnit?.currentCell) continue;
+            cell.SetHighlight(pathColor);
+        }
+    }
+
+    void ClearPathOverlay()
+    {
+        if (currentPath.Count == 0) return;
+        currentPath.Clear();
+
+        ApplyBaseHighlights();
+    }
+
+    void ClearAllHighlights()
+    {
+        if (hexGridGenerator == null) return;
+        var grid = hexGridGenerator.Grid;
+        if (grid == null) return;
+
+        foreach (var kvp in grid)
+        {
+            var cell = kvp.Value;
+            if (cell != null) cell.ResetHighlight();
+        }
+    }
+
+    // ====== Ability targeting (needed for GlobalAbilitiesUI) ======
+
+    // НУЖНО ДЛЯ GlobalAbilitiesUI
+    public void StartAbilityTargetSelection(Unit caster, Unit.SpecialAbilityType abilityType)
+    {
+        if (caster == null) return;
+        if (!caster.CanUseSpecialAbility()) return;
+        if (caster.currentCell == null) return;
+
+        isSelectingAbilityTarget = true;
+        abilityCaster = caster;
+        currentAbilityType = abilityType;
+        requiredTargetType = caster.GetSpecialAbilityTarget();
+        abilityRangeHex = Mathf.Max(0, Mathf.RoundToInt(caster.GetSpecialAbilityRange()));
+
+        // очищаем всё и рисуем радиус способности
+        ClearAllHighlights();
+        reachableSet.Clear();
+        attackSet.Clear();
+        bothSet.Clear();
+        currentPath.Clear();
+
+        abilityRangeCells.Clear();
+        abilityValidUnits.Clear();
+        hoveredCell = null;
+
+        BuildAndShowAbilityRange();
+    }
+
+    void BuildAndShowAbilityRange()
+    {
+        if (hexGridGenerator == null || abilityCaster == null || abilityCaster.currentCell == null) return;
+        var grid = hexGridGenerator.Grid;
+        if (grid == null) return;
+
+        foreach (var kvp in grid)
+        {
+            var cell = kvp.Value;
+            if (cell == null) continue;
+            if (cell == abilityCaster.currentCell) continue;
+
+            int dist = abilityCaster.currentCell.GetDistanceTo(cell);
+            if (dist > abilityRangeHex) continue;
+
+            abilityRangeCells.Add(cell);
+
+            // базовая подсветка радиуса
+            cell.SetHighlight(abilityRangeCellColor);
+
+            if (cell.occupiedUnit != null && cell.occupiedUnit.IsAlive())
+            {
+                if (IsValidAbilityTarget(cell.occupiedUnit))
+                {
+                    abilityValidUnits.Add(cell.occupiedUnit);
+                    cell.SetHighlight(abilityValidTargetCellColor);
+                }
+            }
+        }
+
+        // на всякий случай подсветим кастера
+        abilityCaster.currentCell.SetHighlight(controlEnemyUnits ? enemySelectedColor : selectedColor);
+    }
+
+    bool IsValidAbilityTarget(Unit targetUnit)
+    {
+        if (targetUnit == null || !targetUnit.IsAlive() || abilityCaster == null) return false;
+
+        switch (requiredTargetType)
+        {
+            case Unit.AbilityTarget.Self:
+                return targetUnit == abilityCaster;
+
+            case Unit.AbilityTarget.Ally:
+                return (targetUnit.CompareTag("selected_unit") && abilityCaster.CompareTag("selected_unit")) ||
+                       (targetUnit.CompareTag("enemy_unit") && abilityCaster.CompareTag("enemy_unit"));
+
+            case Unit.AbilityTarget.Enemy:
+                return (targetUnit.CompareTag("enemy_unit") && abilityCaster.CompareTag("selected_unit")) ||
+                       (targetUnit.CompareTag("selected_unit") && abilityCaster.CompareTag("enemy_unit"));
+
+            case Unit.AbilityTarget.AnyUnit:
+                return true;
+
+            case Unit.AbilityTarget.GroundCell:
+            case Unit.AbilityTarget.Any:
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    void UpdateAbilityTargetPreview()
+    {
+        // восстановим радиус как был (без сложных диффов, просто перерисовка)
+        // дешево и надежно, сетка маленькая
+        ClearAllHighlights();
+        BuildAndShowAbilityRange();
+
+        Ray ray = gameCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+
+        hoveredCell = null;
+
+        if (Physics.Raycast(ray, out hit, 1000f, hexLayerMask))
+        {
+            var cell = hit.collider.GetComponent<HexCell>();
+            if (cell != null && abilityRangeCells.Contains(cell))
+            {
+                hoveredCell = cell;
+
+                // если требуется юнит, а тут валидный юнит
+                if (cell.occupiedUnit != null && abilityValidUnits.Contains(cell.occupiedUnit))
+                {
+                    cell.SetHighlight(abilityHoverValidColor);
+                }
+                else
+                {
+                    // если можно по земле (GroundCell/Any), то любая клетка в радиусе ок
+                    if (requiredTargetType == Unit.AbilityTarget.GroundCell || requiredTargetType == Unit.AbilityTarget.Any)
+                        cell.SetHighlight(abilityHoverValidColor);
+                    else
+                        cell.SetHighlight(abilityHoverInvalidColor);
+                }
+            }
+        }
+    }
+
+    void HandleRightClickForAbility()
+    {
+        if (abilityCaster == null || !abilityCaster.CanUseSpecialAbility())
+        {
+            CancelAbilitySelection();
+            return;
+        }
+
+        Ray ray = gameCamera.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+        bool used = false;
+
+        // 1) пробуем юнита
+        if (Physics.Raycast(ray, out hit, 1000f, unitLayerMask))
+        {
+            Unit targetUnit = hit.collider.GetComponent<Unit>();
+            if (targetUnit != null && IsValidAbilityTarget(targetUnit))
+            {
+                used = abilityCaster.UseSpecialAbility(targetUnit);
+            }
+        }
+
+        // 2) пробуем землю
+        if (!used && (requiredTargetType == Unit.AbilityTarget.GroundCell || requiredTargetType == Unit.AbilityTarget.Any))
+        {
+            if (Physics.Raycast(ray, out hit, 1000f, hexLayerMask))
+            {
+                HexCell cell = hit.collider.GetComponent<HexCell>();
+                if (cell != null && abilityRangeCells.Contains(cell))
+                {
+                    used = abilityCaster.UseSpecialAbility(null, cell.transform.position);
+                }
+            }
+        }
+
+        if (used)
+        {
+            ClearAbilitySelection();
+
+            // возвращаем обычное выделение
+            if (selectedUnit != null)
+            {
+                RebuildRangesAndHighlights();
+                if (selectedUnit.currentCell != null)
+                    selectedUnit.currentCell.SetHighlight(controlEnemyUnits ? enemySelectedColor : selectedColor);
+            }
+        }
+        else
+        {
+            // не получилось применить, просто остаёмся в режиме выбора
+            if (debugMode) Debug.Log("Ability not used: invalid target.");
+        }
+    }
+
+    void CancelAbilitySelection()
+    {
+        ClearAbilitySelection();
+
+        // вернуть обычные подсветки выбранного юнита
+        if (selectedUnit != null)
+        {
+            RebuildRangesAndHighlights();
+            if (selectedUnit.currentCell != null)
+                selectedUnit.currentCell.SetHighlight(controlEnemyUnits ? enemySelectedColor : selectedColor);
+        }
+        else
+        {
+            ClearAllHighlights();
+        }
+    }
+
+    void ClearAbilitySelection()
+    {
+        isSelectingAbilityTarget = false;
+        abilityCaster = null;
+        currentAbilityType = Unit.SpecialAbilityType.None;
+        requiredTargetType = Unit.AbilityTarget.Any;
+        abilityRangeHex = 0;
+
+        abilityRangeCells.Clear();
+        abilityValidUnits.Clear();
+        hoveredCell = null;
+    }
+
+    // ====== Reachable BFS ======
+    List<HexCell> GetReachableCellsBFS(HexCell start, int movementPoints, IReadOnlyDictionary<HexCoordinates, HexCell> grid)
+    {
+        var result = new List<HexCell>();
+        if (start == null || grid == null || movementPoints <= 0) return result;
+
+        var cost = new Dictionary<HexCell, int>();
+        var q = new Queue<HexCell>();
+
+        cost[start] = 0;
+        q.Enqueue(start);
+
+        while (q.Count > 0)
+        {
+            var cur = q.Dequeue();
+
+            foreach (var n in cur.GetNeighbors(grid))
+            {
+                if (n == null) continue;
+                if (!n.isWalkable) continue;
+                if (n.occupiedUnit != null) continue;
+                if (n.occupiedByObject) continue;
+
+                int stepCost = Mathf.Max(1, n.moveCost);
+                int newCost = cost[cur] + stepCost;
+
+                if (newCost > movementPoints) continue;
+
+                if (!cost.TryGetValue(n, out int old) || newCost < old)
+                {
+                    cost[n] = newCost;
+                    q.Enqueue(n);
+                }
+            }
+        }
+
+        foreach (var kv in cost)
+        {
+            if (kv.Key != start)
+                result.Add(kv.Key);
+        }
+
+        return result;
+    }
+
+    // ====== A* ======
+    List<HexCell> FindPathAStar(HexCell start, HexCell goal, IReadOnlyDictionary<HexCoordinates, HexCell> grid)
+    {
+        if (start == null || goal == null || grid == null) return null;
+        if (!goal.isWalkable) return null;
+        if (goal.occupiedUnit != null) return null;
+        if (goal.occupiedByObject) return null;
+
+        var open = new List<HexCell>();
+        var cameFrom = new Dictionary<HexCell, HexCell>();
+        var g = new Dictionary<HexCell, int>();
+        var f = new Dictionary<HexCell, int>();
+
+        open.Add(start);
+        g[start] = 0;
+        f[start] = start.GetDistanceTo(goal);
+
+        while (open.Count > 0)
+        {
+            HexCell current = open[0];
+            int bestF = f.TryGetValue(current, out int cf) ? cf : int.MaxValue;
+
+            for (int i = 1; i < open.Count; i++)
+            {
+                var c = open[i];
+                int fc = f.TryGetValue(c, out int val) ? val : int.MaxValue;
+                if (fc < bestF)
+                {
+                    bestF = fc;
+                    current = c;
+                }
+            }
+
+            if (current == goal)
+                return Reconstruct(cameFrom, current);
+
+            open.Remove(current);
+
+            foreach (var n in current.GetNeighbors(grid))
+            {
+                if (n == null) continue;
+                if (!n.isWalkable) continue;
+                if (n.occupiedUnit != null) continue;
+                if (n.occupiedByObject) continue;
+
+                int stepCost = Mathf.Max(1, n.moveCost);
+                int tentativeG = g[current] + stepCost;
+
+                if (!g.TryGetValue(n, out int gn) || tentativeG < gn)
+                {
+                    cameFrom[n] = current;
+                    g[n] = tentativeG;
+                    f[n] = tentativeG + n.GetDistanceTo(goal);
+
+                    if (!open.Contains(n))
+                        open.Add(n);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    List<HexCell> Reconstruct(Dictionary<HexCell, HexCell> cameFrom, HexCell current)
+    {
+        var path = new List<HexCell> { current };
+        while (cameFrom.TryGetValue(current, out var prev))
+        {
+            current = prev;
+            path.Add(current);
+        }
+        path.Reverse();
+        return path;
+    }
+
+    // ===== Turn =====
+    public void EndTurn()
+    {
+        Unit[] allUnits = FindObjectsOfType<Unit>();
+        foreach (Unit unit in allUnits) unit.ResetTurn();
+
+        OnTurnEnded?.Invoke();
+        foreach (var mine in FindObjectsOfType<MineTrap>())
+            mine.OnTurnPassed();
+
+        ClearSelection();
+    }
+
+    void OnDestroy()
+    {
+        OnTurnEnded = null;
+    }
+}

@@ -1,0 +1,157 @@
+using UnityEngine;
+using TMPro;
+using System.Collections.Generic;
+
+public class MineTrap : MonoBehaviour
+{
+    [Header("Grid")]
+    [SerializeField] private HexGridGenerator hexGridGenerator;
+
+    [Header("Mine Settings")]
+    [SerializeField] private int turnsToExplode = 2;
+    [SerializeField] private int damage = 60;
+    [SerializeField] private int blastRadiusCells = 2;
+
+    [Header("Visuals")]
+    [Tooltip("Корень визуала (модель/иконки). Его будем скрывать/показывать.")]
+    [SerializeField] private GameObject visualsRoot;
+
+    [Tooltip("Текст (TMP) для отображения ходов до взрыва.")]
+    [SerializeField] private TMP_Text turnsText;
+
+    [Header("Trigger")]
+    [SerializeField] private Collider triggerCollider;
+
+    private HexCell currentCell;
+    private bool armed = false;
+    private int turnsLeft;
+
+    void Awake()
+    {
+        if (!hexGridGenerator)
+            hexGridGenerator = FindObjectOfType<HexGridGenerator>();
+
+        if (!visualsRoot)
+        {
+            // если не назначил, возьмем первый child как визуал
+            if (transform.childCount > 0)
+                visualsRoot = transform.GetChild(0).gameObject;
+        }
+
+        if (!triggerCollider)
+            triggerCollider = GetComponentInChildren<Collider>();
+
+        // триггер нужен, чтобы активировать мину
+        if (triggerCollider)
+            triggerCollider.isTrigger = true;
+
+        HideMine();
+    }
+
+    public void SetCurrentCell(HexCell cell)
+    {
+        currentCell = cell;
+
+        if (currentCell != null)
+        {
+            // Мина "лежит" на клетке, но НЕ блокирует движение
+            currentCell.occupiedByObject = true;
+            currentCell.ObjectBlocksMovement = false;
+        }
+    }
+
+    private void HideMine()
+    {
+        if (visualsRoot) visualsRoot.SetActive(false);
+        if (turnsText) turnsText.text = "";
+        armed = false;
+    }
+
+    private void RevealMine()
+    {
+        if (visualsRoot) visualsRoot.SetActive(true);
+
+        // ВАЖНО: выключаем все НЕ-триггер коллайдеры на визуале,
+        // чтобы они не начинали перехватывать клики/рейкасты после ревила
+        if (visualsRoot)
+        {
+            foreach (var col in visualsRoot.GetComponentsInChildren<Collider>(true))
+            {
+                if (col != triggerCollider)
+                    col.enabled = false;
+            }
+        }
+    }
+
+    private void Arm()
+    {
+        if (armed) return;
+
+        armed = true;
+        turnsLeft = turnsToExplode;
+
+        RevealMine();
+        UpdateTurnsText();
+    }
+
+    public void OnTurnPassed()
+    {
+        if (!armed) return;
+
+        turnsLeft--;
+        UpdateTurnsText();
+
+        if (turnsLeft <= 0)
+            Explode();
+    }
+
+    private void UpdateTurnsText()
+    {
+        if (!turnsText) return;
+        turnsText.text = turnsLeft > 0 ? turnsLeft.ToString() : "";
+    }
+
+    private void Explode()
+    {
+        if (hexGridGenerator == null || hexGridGenerator.Grid == null || currentCell == null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        var grid = hexGridGenerator.Grid;
+
+        foreach (var kvp in grid)
+        {
+            HexCell cell = kvp.Value;
+            if (cell == null) continue;
+
+            int dist = HexCoordinates.Distance(currentCell.coordinates, cell.coordinates);
+            if (dist > blastRadiusCells) continue;
+
+            if (cell.occupiedUnit != null)
+            {
+                // Полный урон всем, без “половины по союзникам”
+                cell.occupiedUnit.TakeDamage(damage, null);
+            }
+        }
+
+        // убрать отметку с клетки
+        if (currentCell != null)
+        {
+            currentCell.occupiedByObject = false;
+            currentCell.ObjectBlocksMovement = false;
+        }
+
+        Destroy(gameObject);
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        Unit unit = other.GetComponentInParent<Unit>();
+        if (unit == null) return;
+
+        // если юнит реально находится в радиусе клетки (на всякий)
+        Arm();
+    }
+}

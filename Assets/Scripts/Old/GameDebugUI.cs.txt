@@ -1,0 +1,108 @@
+﻿using UnityEngine;
+using TMPro;
+
+public class GameDebugUI : MonoBehaviour
+{
+    [Header("UI Elements")]
+    public GameObject debugPanel;
+    public TMP_Text selectedUnitText;
+    public TMP_Text controlModeText;
+    public TMP_Text unitStatsText;
+
+    [Header("Settings")]
+    public KeyCode toggleDebugKey = KeyCode.F1;
+    public bool showDebugInfo = true;
+
+    private UnitMovementController movementController;
+    private Unit selectedUnit;
+
+    void Start()
+    {
+        movementController = FindObjectOfType<UnitMovementController>();
+
+        if (debugPanel != null)
+            debugPanel.SetActive(showDebugInfo);
+    }
+
+    void Update()
+    {
+        // Переключение панели дебага
+        if (Input.GetKeyDown(toggleDebugKey))
+        {
+            showDebugInfo = !showDebugInfo;
+            if (debugPanel != null)
+                debugPanel.SetActive(showDebugInfo);
+        }
+
+        if (showDebugInfo)
+        {
+            UpdateDebugInfo();
+        }
+    }
+
+    void UpdateDebugInfo()
+    {
+        if (movementController == null) return;
+
+        // Получаем выбранный юнит (через рефлексию или добавим публичный метод)
+        selectedUnit = GetSelectedUnitFromController();
+
+        // Обновляем тексты
+        if (selectedUnitText != null)
+        {
+            selectedUnitText.text = selectedUnit != null ?
+                $"Selected: {selectedUnit.name}\nTag: {selectedUnit.tag}" : // Исправлено: GetUnitTag() → tag
+                "No unit selected";
+        }
+
+        if (controlModeText != null)
+        {
+            controlModeText.text = IsControllingEnemy() ?
+                "Control Mode: ENEMY\nPress TAB to switch" :
+                "Control Mode: PLAYER\nPress TAB to switch";
+        }
+
+        if (unitStatsText != null && selectedUnit != null)
+        {
+            unitStatsText.text =
+                $"HP: {selectedUnit.GetCurrentHealth()}/{selectedUnit.maxHealth}\n" +
+                $"MP: {selectedUnit.GetCurrentMovementPoints()}/{selectedUnit.maxMovementPoints}\n" +
+                $"Energy: {selectedUnit.GetCurrentEnergy()}/{selectedUnit.maxEnergy}\n" +
+                $"Attack Range: {selectedUnit.attackRange}\n" +
+                $"Can Move: {selectedUnit.CanMove()}\n" +
+                $"Can Act: {selectedUnit.CanAct()}";
+        }
+    }
+
+    Unit GetSelectedUnitFromController()
+    {
+        // Используем рефлексию для получения приватного поля
+        var field = movementController.GetType().GetField("selectedUnit",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return field?.GetValue(movementController) as Unit;
+    }
+
+    bool IsControllingEnemy()
+    {
+        var field = movementController.GetType().GetField("controlEnemyUnits",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return field?.GetValue(movementController) as bool? ?? false;
+    }
+
+    // Методы для кнопок UI
+    public void SwitchToPlayerControl()
+    {
+        if (movementController != null)
+        {
+            movementController.SwitchToPlayerControl();
+        }
+    }
+
+    public void SwitchToEnemyControl()
+    {
+        if (movementController != null)
+        {
+            movementController.SwitchToEnemyControl();
+        }
+    }
+}

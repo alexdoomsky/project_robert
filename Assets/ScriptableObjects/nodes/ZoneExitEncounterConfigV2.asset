@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b92ca551d6934514684c7bfdcbef5052, type: 3}
+  m_Name: ZoneExitEncounterConfigV2
+  m_EditorClassIdentifier: Assembly-CSharp::ZoneExitEncounterConfigV2
+  zones:
+  - zoneIndex: 0
+    chanceLow: 0.3
+    chanceMedium: 0.4
+    chanceHigh: 0.2
+  - zoneIndex: 1
+    chanceLow: 0.4
+    chanceMedium: 0.5
+    chanceHigh: 0.2
+  - zoneIndex: 2
+    chanceLow: 0.2
+    chanceMedium: 0.4
+    chanceHigh: 0.6
+  presetPools:
+  - zoneIndex: 0
+    threat: 0
+    presets:
+    - {fileID: 11400000, guid: 845f9be6724e15545a485dfb7d1a0c58, type: 2}
+  - zoneIndex: 0
+    threat: 1
+    presets:
+    - {fileID: 11400000, guid: dc634ccd8a2479b4abc8c235605e7326, type: 2}
+  - zoneIndex: 0
+    threat: 2
+    presets:
+    - {fileID: 11400000, guid: 5641cdd603be13446ab34662cbe1dccb, type: 2}
+  - zoneIndex: 1
+    threat: 0
+    presets:
+    - {fileID: 11400000, guid: cc772efe47d5d8c4fa41e6c4afb46f00, type: 2}
+  - zoneIndex: 1
+    threat: 1
+    presets:
+    - {fileID: 11400000, guid: 142529bb5831a154d9708c5d7eb6912c, type: 2}
+  - zoneIndex: 1
+    threat: 2
+    presets:
+    - {fileID: 11400000, guid: 0b929b4606c04d943ad8d5cbff88d179, type: 2}
+  - zoneIndex: 2
+    threat: 0
+    presets:
+    - {fileID: 11400000, guid: e221ebb3effaf2c4e803cd9a920830d9, type: 2}
+  - zoneIndex: 2
+    threat: 1
+    presets:
+    - {fileID: 11400000, guid: 2ae1338b40c2afb4388c91dcb224b530, type: 2}
+  - zoneIndex: 2
+    threat: 2
+    presets:
+    - {fileID: 11400000, guid: 054cc8a989e268f498dc8d5aed181569, type: 2}

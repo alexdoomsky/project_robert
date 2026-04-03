@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e98738978272a147ab1bd18fe1a3cce, type: 3}
+  m_Name: barrier
+  m_EditorClassIdentifier: Assembly-CSharp::StatusDefV2
+  id: 1
+  icon: {fileID: 21300000, guid: 176e43061a161484dbdd4203c7335acb, type: 3}
+  displayName: Barrier
+  descriptionTemplate: Unit has a temporary barrier that negates most of the damage
+    and absorbs it until destroys or expire in  3 rounds.

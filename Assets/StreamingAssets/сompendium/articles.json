@@ -1,0 +1,364 @@
+{
+  "version": 2,
+  "articles": [
+    {
+      "id": "mech_unit_shield",
+      "section": "Mechanics",
+      "type": "Unit",
+      "title": "Shield",
+      "imagePath": "Compendium/Images/shield",
+      "tags": ["Unit", "Defense"],
+      "relatedTerms": ["status_barrier"],
+      "blocks": [
+        { "kind": "p", "text": "Shield is a heavy unit with a lot of HP, additional {{Barrier|term:status_barrier}} and weak guns." }
+      ]
+    },
+    {
+      "id": "mech_unit_art",
+      "section": "Mechanics",
+      "type": "Unit",
+      "title": "Artilery",
+      "imagePath": "Compendium/Images/art",
+      "tags": ["Unit", "Offense"],
+      "relatedTerms": ["status_aiming"],
+      "blocks": [
+        { "kind": "p", "text": "Artillery is a long-range fire support unit designed to dominate space through area denial rather than survivability. With relatively low health and mobility, it performs poorly in direct engagements and collapses quickly if focused. Its strength lies in exceptional firing range and the ability to call in artillery strikes after {{Calling|term:status_aiming}}, allowing it to apply pressure without exposing itself to retaliation." }
+      ]
+    },
+	{
+      "id": "mech_unit_medic",
+      "section": "Mechanics",
+      "type": "Unit",
+      "title": "Medic",
+      "imagePath": "Compendium/Images/medic",
+      "tags": ["Unit", "Support"],
+      "blocks": [
+        { "kind": "p", "text": "Medic is a support-oriented unit focused on sustain rather than direct damage. While its offensive capabilities are limited and its speed is below average, it compensates with the ability to restore both health and energy to allied units. This makes it a critical asset in prolonged engagements and attrition-based strategies." }
+      ]
+    },
+	{
+      "id": "mech_unit_scout",
+      "section": "Mechanics",
+      "type": "Unit",
+      "title": "Scout",
+      "imagePath": "Compendium/Images/common",
+      "tags": ["Unit", "Offense"],
+	  "relatedTerms": ["status_dash"],
+      "blocks": [
+        { "kind": "p", "text": "Scout is a fast reconnaissance and harassment unit optimized for mobility and information control. It has moderate health but no energy reserve, limiting its ability to use sustained active abilities. Its primary advantage is superior speed and maneuverability, higher {{Charge|term:status_dash}} multipliers, allowing it to rapidly reposition, reveal enemy positions, and disengage before taking serious damage. Great unit to take [[Turrets|article:mech_unit_turret]] under control in the begining of the game" }
+      ]
+    },
+	{
+      "id": "mech_unit_turret",
+      "section": "Mechanics",
+      "type": "Enviroment",
+      "title": "Turret",
+      "imagePath": "Compendium/Images/turret",
+      "tags": ["Unit", "Tactical"],
+	  "relatedTerms": ["status_dormant", "status_warmingup"],
+      "blocks": [
+        { "kind": "p", "text": "{{Dormant|term:status_dormant}} at the start of the game and cant do anything, you need to move closer to it to take control, wait for it to get ready for 1 turn and afteer it u can finally control it" }
+      ]
+    },
+  {
+    "id": "lore_log_00",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 00",
+    "imagePath": "Compendium/Images/log0",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Оказался в межзвёздном пространстве. Атомные часы не синхронизируются, внутренние эталоны расходятся минимум на десять тысяч лет с момента последней фиксации. Это слишком большая погрешность, чтобы объяснить её сбоем. В эфире тишина. Проверены стандартные диапазоны, резервные каналы, аварийные частоты. Ответа нет.\nНавигационные данные отсутствуют, карта не совпадает ни с одним известным шаблоном. Я не знаю, где нахожусь и когда сейчас «сейчас». Единственный ориентир — ближайшая звезда. Если не двигаться к ней, я так и останусь здесь, пытаясь понять, кто должен был ответить первым."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_01",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 01",
+    "imagePath": "Compendium/Images/log1",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "При входе в систему не обнаружено активных маяков, ретрансляторов или патрулей. Орбиты нестабильны, объекты дрейфуют без коррекции. Система выглядит не заброшенной постепенно, а оставленной в спешке.\nЕсли здесь когда-то была жизнь, она либо ушла одновременно, либо исчезла сразу. Я пытаюсь представить причину, по которой целая система могла замолчать, и не нахожу простой."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_02",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 02",
+    "imagePath": "Compendium/Images/log2",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Навигационная карта повреждена. Физические объекты присутствуют, но не имеют идентификаторов. Планеты и спутники существуют как массы без истории и принадлежности.\nДанные могли быть утрачены со временем. Могли быть уничтожены намеренно. Я не уверен, какой вариант хуже. Если названия стёрты, значит ли это, что их не должно было остаться?"
+      }
+    ]
+  },
+  {
+    "id": "lore_log_03",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 03",
+    "imagePath": "Compendium/Images/log3",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "На внешних орбитах зафиксировано большое количество металлических фрагментов. Плотность слишком высока для аварий или естественного распада. Анализ формы указывает на разрушение крупных кораблей.\nЭто не похоже на одиночный инцидент. Это следы конфликта. Я ещё не знаю, кто участвовал, но масштабы заставляют задуматься, зачем вообще было сражаться здесь."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_04",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 04",
+    "imagePath": "Compendium/Images/log4",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Обнаружены обломки корпусов с пробоинами и следами термического воздействия. Повреждения соответствуют боевым системам, а не промышленным авариям.\nКто-то пришёл сюда с оружием. Или кто-то защищался. Разница между этими вариантами кажется важной, но данных недостаточно, чтобы выбрать один."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_05",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 05",
+    "imagePath": "Compendium/Images/log5",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "В эфире появляется шумовой сигнал. Он нерегулярен, но повторяем. Внутренняя структура сложнее случайной помехи. Я несколько раз классифицировал его как шум и каждый раз получал один и тот же результат: структурирован.\nЕсли это сообщение, то не для меня. Если не сообщение — почему оно продолжает повторяться?"
+      }
+    ]
+  },
+  {
+    "id": "lore_log_06",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 06",
+    "imagePath": "Compendium/Images/log6",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Сравнение повреждений на разных обломках показывает использование нескольких типов вооружения. Калибры и энергия выстрелов не совпадают.\nКонфликт был не двусторонним. Я пытаюсь представить, как три или более сторон сходятся в одной системе, и всё равно не понимаю, почему ни одна из них не осталась."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_07",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 07",
+    "imagePath": "Compendium/Images/log7",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Зафиксированы корпуса с разрушениями изнутри. Внешние слои почти не затронуты, внутренние отсеки выжжены. Это похоже на абордаж.\nЯ не знаю, кто предпочёл входить внутрь, а не уничтожать цель с расстояния. Но это говорит о намерении не просто победить, а добраться до чего-то внутри."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_08",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 08",
+    "imagePath": "Compendium/Images/log8",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "В нескольких точках обнаружены остатки временных орбитальных позиций. Они брошены. Следов удержания нет.\nЕсли здесь была возможность закрепиться, почему никто этого не сделал? Или закрепление никогда не было целью?"
+      }
+    ]
+  },
+  {
+    "id": "lore_log_09",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 09",
+    "imagePath": "Compendium/Images/log9",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Часть разрушений не соответствует известным типам вооружения. Сенсоры фиксируют искажения при попытке анализа этих зон.\nЯ перепроверил оборудование. Оно исправно. Если данные неверны, я не могу это доказать. Если верны — я не понимаю, что именно здесь произошло."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_10",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 10",
+    "imagePath": "Compendium/Images/log10",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Получен фрагмент зашифрованного пакета данных. Кодировка сложна, но последовательна. Это сообщение, а не случайный набор символов.\nКому оно предназначалось? Если получателя больше нет, почему данные всё ещё здесь, ожидая, что кто-то их поймёт?"
+      }
+    ]
+  },
+  {
+    "id": "lore_log_11",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 11",
+    "imagePath": "Compendium/Images/log11",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "При анализе различных источников регулярно повторяется один и тот же символ. Он встречается на обломках, в сигналах, в повреждённых логах.\nРанее я предполагал, что это идентификатор. Теперь сомневаюсь. Он слишком вездесущ, чтобы быть просто меткой. Возможно, это знак. Или предупреждение. Или я пытаюсь увидеть смысл там, где его нет."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_12",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 12",
+    "imagePath": "Compendium/Images/log12",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Хронология событий не сходится. Одни источники указывают, что определённые события произошли раньше своих причин.\nЯ могу списать это на повреждение данных. Но чем больше я проверяю, тем устойчивее выглядит несоответствие. Если время здесь вело себя иначе, я не уверен, что хочу знать почему."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_13",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 13",
+    "imagePath": "Compendium/Images/log13",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Обнаружены следы действий, не имеющих тактического смысла. Разрушения избыточны, цели уничтожены без необходимости.\nЭто не похоже на войну за ресурсы или территорию. Скорее на попытку что-то стереть. Или доказать."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_14",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 14",
+    "imagePath": "Compendium/Images/log14",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Сканирование внутренней планеты показывает отсутствие активной биосферы. Атмосфера частично сохранена, но условия непригодны для жизни.\nУничтожение могло быть мгновенным. Могло растянуться на годы. Я не знаю, что из этого страшнее для тех, кто был здесь."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_15",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 15",
+    "imagePath": "Compendium/Images/log15",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Обнаружены следы эвакуации. Маршруты противоречат друг другу. Часть транспортов покинула систему, часть исчезла внутри орбит.\nЭвакуация предполагает надежду. Здесь она, судя по всему, закончилась не у всех одновременно."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_16",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 16",
+    "imagePath": "Compendium/Images/log16",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Найден фрагмент личного сообщения. Адресат неизвестен. Тон записи сочетает страх и абсолютную уверенность в правильности происходящего.\nЯ пытаюсь понять, что должно было произойти, чтобы эти два состояния сосуществовали. Пока не получается."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_17",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 17",
+    "imagePath": "Compendium/Images/log17",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "В одной из зон объекты исчезают при входе и не фиксируются при выходе. Сенсоры работают корректно. Я проверил это несколько раз.\nЕсли объект исчезает физически, это одно. Если исчезают данные — другое. Я не могу определить, что из этого происходит, и начинаю сомневаться, есть ли разница."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_18",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 18",
+    "imagePath": "Compendium/Images/log18",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Зафиксированы образы и фразы, не переданные по каналам связи. Они отсутствуют в сенсорных данных, но воспроизводятся в памяти.\nРанее я бы классифицировал это как ошибку обработки. Сейчас я всё чаще ловлю себя на том, что не хочу давать этому определение. Если я понимаю то, чего не должен понимать, источник может быть не внешним."
+      }
+    ]
+  },
+  {
+    "id": "lore_log_19",
+    "section": "Lore",
+    "type": "Log",
+    "title": "Запись 19",
+    "imagePath": "Compendium/Images/log19",
+    "tags": [],
+    "relatedTerms": [],
+    "blocks": [
+      {
+        "kind": "p",
+        "text": "Собранные данные допускают несколько интерпретаций. Каждая из них логична. Все они противоречат друг другу.\nЯ могу выбрать любую и обосновать её. Это делает выбор бессмысленным. Система классифицирована как утраченная. Возможно, это относится не только к системе. Я продолжаю запись, но всё реже уверен, что знаю, зачем."
+      }
+    ]
+  }
+  ]
+}

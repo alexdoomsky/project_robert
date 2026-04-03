@@ -1,0 +1,65 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+public class MineSpawner : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private HexGridGenerator gridGenerator;
+    [SerializeField] private GameObject minePrefab;
+
+    [Header("Placement")]
+    [SerializeField] private int minesCount = 3;
+    [SerializeField] private int safeRowsFromEnds = 2;
+
+    public void SpawnMines()
+    {
+        if (gridGenerator == null || minePrefab == null)
+        {
+            Debug.LogError("MineSpawner: missing references");
+            return;
+        }
+
+        var grid = gridGenerator.Grid;
+        if (grid == null || grid.Count == 0)
+        {
+            Debug.LogError("MineSpawner: grid is empty");
+            return;
+        }
+
+        List<HexCell> candidates = new List<HexCell>();
+        foreach (var cell in grid.Values)
+        {
+            if (cell == null) continue;
+
+            int row = cell.offsetCoords.y;
+            if (row < safeRowsFromEnds) continue;
+            if (row > (gridGenerator.Height - 1 - safeRowsFromEnds)) continue;
+
+            if (!cell.isWalkable) continue;
+            if (cell.occupiedUnit != null) continue;
+
+            candidates.Add(cell);
+        }
+
+        int placed = 0;
+        int guard = 10000;
+
+        while (placed < minesCount && guard-- > 0 && candidates.Count > 0)
+        {
+            int idx = Random.Range(0, candidates.Count);
+            HexCell targetCell = candidates[idx];
+            candidates.RemoveAt(idx);
+
+            GameObject mineObj = Instantiate(minePrefab, targetCell.transform.position, Quaternion.identity);
+            MineTrap mine = mineObj.GetComponent<MineTrap>();
+            if (mine != null)
+            {
+                mine.SetCurrentCell(targetCell);
+            }
+
+            placed++;
+        }
+
+        Debug.Log($"MineSpawner: placed {placed}/{minesCount} mines");
+    }
+}

@@ -1,0 +1,948 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections.Generic;
+using UnityEngine.EventSystems;
+
+public class GlobalAbilitiesUI : MonoBehaviour
+{
+    [Header("Target Selection")]
+    public GameObject targetSelectionUI;
+    public Button confirmTargetButton;
+    public Button cancelTargetButton;
+
+    private AbilityTargetType currentTargetType;
+    private System.Action<Unit> onUnitSelectedCallback;
+    private System.Action<Vector3> onPositionSelectedCallback;
+
+    [Header("UI Elements")]
+    public GameObject abilitiesPanel;
+    public Button chargeButton;
+    public Button specialAbilityButton;
+    public Image specialAbilityIcon;
+    public TMP_Text chargeButtonText;
+    public TMP_Text specialButtonText;
+    public TMP_Text chargeCooldownText;
+    public TMP_Text chargeEnergyText;
+    public TMP_Text specialAbilityCooldownText;
+    public TMP_Text specialAbilityEnergyText;
+
+    [Header("Charge Tooltip Settings")]
+    public GameObject chargeTooltipPanel;
+    public TMP_Text chargeTooltipTitle;
+    public TMP_Text chargeTooltipDescription;
+    [TextArea(2, 4)]
+    public string chargeTooltipText = "Удваивает скорость и очки движения, но забирает возможность атаковать в этот ход.";
+
+    [Header("Special Ability Tooltip Settings")]
+    public GameObject specialAbilityTooltipPanel;
+    public TMP_Text specialAbilityTooltipTitle;
+    public TMP_Text specialAbilityTooltipDescription;
+    public TMP_Text specialAbilityTooltipDetails;
+
+    [System.Serializable]
+    public class SpecialAbilityTooltip
+    {
+        public Unit.SpecialAbilityType abilityType;
+        public string displayName = "Способность";
+        [TextArea(2, 4)]
+        public string description = "Описание способности";
+        [TextArea(1, 2)]
+        public string details = "Детали способности";
+
+        // Иконка для кнопки способности
+        public Sprite icon;
+
+        // Иконка для отображения эффекта на юните
+        public Sprite effectIcon;
+
+        // Цвет фона панели для эффекта
+        public Color panelColor = new Color(0.5f, 0.5f, 0.5f, 0.7f);
+
+        // Тип отображения эффекта
+        public EffectDisplayType effectDisplayType = EffectDisplayType.None;
+
+        // Длительность эффекта в секундах
+        public float effectDuration = 5f;
+
+        // Количество ходов для эффекта
+        public int effectTurns = 1;
+
+        // Тип цели способности
+        public AbilityTargetType targetType = AbilityTargetType.Self;
+
+        // Радиус для AOE способностей
+        public float effectRadius = 0f;
+    }
+
+    public enum EffectDisplayType
+    {
+        None,
+        Timed,
+        UntilTurnEnd,
+        UntilNextTurn,
+        WhileShieldActive,
+        Permanent
+    }
+
+    public enum AbilityTargetType
+    {
+        Self,
+        Ally,
+        Enemy,
+        AnyUnit,
+        GroundCell,
+        Any
+    }
+
+    [Header("Special Ability Tooltips - Configure in Inspector")]
+    public List<SpecialAbilityTooltip> specialAbilityTooltips = new List<SpecialAbilityTooltip>();
+
+    [Header("Colors")]
+    public Color chargeButtonNormalColor = new Color(1f, 0.5f, 0f, 1f); // Оранжевый
+    public Color chargeButtonDisabledColor = new Color(1f, 0.5f, 0f, 0.5f);
+    public Color specialButtonNormalColor = new Color(0.2f, 0.6f, 1f, 1f);
+    public Color specialButtonDisabledColor = new Color(0.2f, 0.6f, 1f, 0.5f);
+
+    private Unit selectedUnit;
+    private UnitMovementController movementController;
+    private Dictionary<Unit.SpecialAbilityType, SpecialAbilityTooltip> tooltipDictionary = new Dictionary<Unit.SpecialAbilityType, SpecialAbilityTooltip>();
+
+    void Start()
+    {
+        movementController = FindObjectOfType<UnitMovementController>();
+
+        // Инициализируем словарь тултипов
+        InitializeTooltipDictionary();
+
+        // Скрываем панель по умолчанию
+        if (abilitiesPanel != null)
+        {
+            abilitiesPanel.SetActive(false);
+        }
+
+        // Скрываем тултипы
+        if (chargeTooltipPanel != null)
+        {
+            chargeTooltipPanel.SetActive(false);
+        }
+
+        if (specialAbilityTooltipPanel != null)
+        {
+            specialAbilityTooltipPanel.SetActive(false);
+        }
+
+        // Настраиваем кнопки
+        SetupButtons();
+    }
+
+    void Update()
+    {
+        if (movementController == null) return;
+
+        // Получаем выбранного юнита через рефлексию
+        UpdateSelectedUnit();
+
+        // Обновляем UI в зависимости от выбранного юнита
+        UpdateUI();
+    }
+
+    void UpdateSelectedUnit()
+    {
+        var field = movementController.GetType().GetField("selectedUnit",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Unit newSelectedUnit = field?.GetValue(movementController) as Unit;
+
+        if (newSelectedUnit != selectedUnit)
+        {
+            selectedUnit = newSelectedUnit;
+            OnSelectedUnitChanged();
+        }
+    }
+
+    public void OnSelectedUnitChanged()
+    {
+        if (selectedUnit == null)
+        {
+            // Скрываем панель
+            if (abilitiesPanel != null)
+            {
+                abilitiesPanel.SetActive(false);
+            }
+        }
+        else
+        {
+            // Показываем панель
+            if (abilitiesPanel != null)
+            {
+                abilitiesPanel.SetActive(true);
+            }
+
+            // Обновляем кнопки способностей для этого юнита
+            UpdateAbilityButtons();
+
+            // Настраиваем тултипы после обновления кнопок
+            SetupSpecialAbilityTooltipForCurrentUnit();
+        }
+    }
+
+    void UpdateUI()
+    {
+        if (selectedUnit == null) return;
+
+        // Обновляем состояние кнопок (активны/неактивны)
+        UpdateButtonStates();
+
+        // Обновляем дополнительную информацию
+        UpdateAbilityInfo();
+    }
+
+    void InitializeTooltipDictionary()
+    {
+        tooltipDictionary.Clear();
+
+        foreach (var tooltip in specialAbilityTooltips)
+        {
+            if (!tooltipDictionary.ContainsKey(tooltip.abilityType))
+            {
+                tooltipDictionary.Add(tooltip.abilityType, tooltip);
+            }
+        }
+    }
+
+    void SetupButtons()
+    {
+        // Настраиваем кнопку рывка
+        if (chargeButton != null)
+        {
+            chargeButton.onClick.RemoveAllListeners();
+            chargeButton.onClick.AddListener(OnChargeButtonClick);
+
+            // Настраиваем тултип для рывка
+            SetupChargeTooltip();
+        }
+
+        // Настраиваем кнопку специальной способности
+        if (specialAbilityButton != null)
+        {
+            specialAbilityButton.onClick.RemoveAllListeners();
+            specialAbilityButton.onClick.AddListener(OnSpecialAbilityButtonClick);
+
+            // Настраиваем тултип для специальной способности сразу
+            SetupSpecialAbilityTooltipForCurrentUnit();
+        }
+
+        // Настраиваем цвета кнопок
+        UpdateButtonColors();
+    }
+
+    void SetupChargeTooltip()
+    {
+        if (chargeButton == null || chargeTooltipPanel == null) return;
+
+        // Удаляем старые EventTriggers
+        EventTrigger oldTrigger = chargeButton.GetComponent<EventTrigger>();
+        if (oldTrigger != null)
+        {
+            Destroy(oldTrigger);
+        }
+
+        // Добавляем новый EventTrigger для тултипа рывка
+        EventTrigger trigger = chargeButton.gameObject.AddComponent<EventTrigger>();
+
+        // Событие при наведении
+        EventTrigger.Entry entryEnter = new EventTrigger.Entry();
+        entryEnter.eventID = EventTriggerType.PointerEnter;
+        entryEnter.callback.AddListener((data) => {
+            ShowChargeTooltip();
+        });
+
+        // Событие при уходе
+        EventTrigger.Entry entryExit = new EventTrigger.Entry();
+        entryExit.eventID = EventTriggerType.PointerExit;
+        entryExit.callback.AddListener((data) => {
+            HideChargeTooltip();
+        });
+
+        trigger.triggers.Add(entryEnter);
+        trigger.triggers.Add(entryExit);
+    }
+
+    void SetupSpecialAbilityTooltipForCurrentUnit()
+    {
+        if (selectedUnit == null || !selectedUnit.HasSpecialAbility()) return;
+
+        Unit.SpecialAbilityType abilityType = selectedUnit.GetSpecialAbilityType();
+        SpecialAbilityTooltip tooltip = GetSpecialAbilityTooltip(abilityType);
+        SetupSpecialAbilityTooltip(tooltip);
+    }
+
+    void UpdateAbilityButtons()
+    {
+        if (selectedUnit == null) return;
+
+        // Обновляем кнопку рывка
+        UpdateChargeButton(selectedUnit.HasChargeAbility());
+
+        // Обновляем кнопку специальной способности
+        UpdateSpecialAbilityButton();
+    }
+
+    void UpdateChargeButton(bool hasCharge)
+    {
+        if (chargeButton == null || chargeButtonText == null) return;
+
+        chargeButton.gameObject.SetActive(hasCharge);
+
+        if (hasCharge)
+        {
+            chargeButtonText.text = "РЫВОК";
+        }
+    }
+
+    void UpdateSpecialAbilityButton()
+    {
+        if (specialAbilityButton != null || specialButtonText == null || specialAbilityIcon == null) return;
+
+        // Получаем тип специальной способности юнита
+        Unit.SpecialAbilityType abilityType = selectedUnit.GetSpecialAbilityType();
+        bool hasSpecialAbility = selectedUnit.HasSpecialAbility();
+
+        // Показываем или скрываем кнопку
+        specialAbilityButton.gameObject.SetActive(hasSpecialAbility);
+
+        if (hasSpecialAbility)
+        {
+            // Получаем данные о тултипе для этой способности
+            SpecialAbilityTooltip tooltip = GetSpecialAbilityTooltip(abilityType);
+
+            // Обновляем текст и иконку
+            specialButtonText.text = tooltip.displayName;
+
+            if (tooltip.icon != null)
+            {
+                specialAbilityIcon.sprite = tooltip.icon;
+                specialAbilityIcon.gameObject.SetActive(true);
+            }
+            else
+            {
+                specialAbilityIcon.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    void SetupSpecialAbilityTooltip(SpecialAbilityTooltip tooltip)
+    {
+        if (specialAbilityButton == null || specialAbilityTooltipPanel == null) return;
+
+        // Удаляем старые EventTriggers
+        EventTrigger oldTrigger = specialAbilityButton.GetComponent<EventTrigger>();
+        if (oldTrigger != null)
+        {
+            Destroy(oldTrigger);
+        }
+
+        // Создаем детали для тултипа
+        string details = tooltip.details;
+        if (selectedUnit != null)
+        {
+            // Добавляем информацию о стоимости и кулдауне
+            if (!string.IsNullOrEmpty(details)) details += "\n";
+            details += $"Энергия: {selectedUnit.GetSpecialAbilityEnergyCost()}\n";
+            details += $"Перезарядка: {selectedUnit.GetSpecialAbilityCooldownTotal()} ход(ов)";
+
+            // Добавляем информацию о цели способности
+            details += $"\nЦель: {GetTargetTypeName(tooltip.targetType)}";
+            if (tooltip.effectRadius > 0)
+            {
+                details += $"\nРадиус: {tooltip.effectRadius} клеток";
+            }
+
+            // Добавляем информацию об ограничении использования рывка
+            if (tooltip.abilityType == Unit.SpecialAbilityType.Charge)
+            {
+                int remainingCharges = selectedUnit.GetRemainingChargesInBattle();
+                if (remainingCharges >= 9999) // int.MaxValue возвращается при безлимите
+                {
+                    details += $"\nОграничение в бою: без ограничений";
+                }
+                else
+                {
+                    details += $"\nОсталось рывков в бою: {remainingCharges}";
+                }
+            }
+        }
+
+        // Добавляем новый EventTrigger
+        EventTrigger trigger = specialAbilityButton.gameObject.AddComponent<EventTrigger>();
+
+        // Событие при наведении
+        EventTrigger.Entry entryEnter = new EventTrigger.Entry();
+        entryEnter.eventID = EventTriggerType.PointerEnter;
+        entryEnter.callback.AddListener((data) => {
+            ShowSpecialAbilityTooltip(tooltip.displayName, tooltip.description, details);
+        });
+
+        // Событие при уходе
+        EventTrigger.Entry entryExit = new EventTrigger.Entry();
+        entryExit.eventID = EventTriggerType.PointerExit;
+        entryExit.callback.AddListener((data) => {
+            HideSpecialAbilityTooltip();
+        });
+
+        trigger.triggers.Add(entryEnter);
+        trigger.triggers.Add(entryExit);
+    }
+
+    SpecialAbilityTooltip GetSpecialAbilityTooltip(Unit.SpecialAbilityType abilityType)
+    {
+        if (tooltipDictionary.ContainsKey(abilityType))
+            return tooltipDictionary[abilityType];
+
+        // Возвращаем тултип по умолчанию
+        return new SpecialAbilityTooltip
+        {
+            abilityType = abilityType,
+            displayName = GetDefaultAbilityName(abilityType),
+            description = GetDefaultAbilityDescription(abilityType),
+            details = "Стоимость и перезарядка зависят от настроек юнита.",
+            targetType = GetDefaultTargetType(abilityType),
+            panelColor = GetDefaultPanelColor(abilityType)
+        };
+    }
+
+    string GetDefaultAbilityName(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ArtilleryStrike: return "Артиллерия";
+            case Unit.SpecialAbilityType.ShieldBarrier: return "Щит";
+            case Unit.SpecialAbilityType.MedicHeal: return "Лечение";
+            case Unit.SpecialAbilityType.Teleport: return "Телепорт";
+            case Unit.SpecialAbilityType.Grenade: return "Граната";
+            case Unit.SpecialAbilityType.SmokeScreen: return "Дым";
+            case Unit.SpecialAbilityType.Berserk: return "Берсерк";
+            case Unit.SpecialAbilityType.ReconScan: return "Разведка";
+            case Unit.SpecialAbilityType.EMP: return "ЭМИ";
+            case Unit.SpecialAbilityType.Charge: return "Рывок";
+            case Unit.SpecialAbilityType.Custom1: return "Способность 1";
+            case Unit.SpecialAbilityType.Custom2: return "Способность 2";
+            case Unit.SpecialAbilityType.Custom3: return "Способность 3";
+            default: return "Способность";
+        }
+    }
+
+    string GetDefaultAbilityDescription(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ArtilleryStrike:
+                return "Наносит урон по области радиусом 1 клетка вокруг выбранной точки.";
+            case Unit.SpecialAbilityType.ShieldBarrier:
+                return "Создает защитный барьер, который поглощает урон. Щит поглощает весь урон, даже если его недостаточно.";
+            case Unit.SpecialAbilityType.MedicHeal:
+                return "Восстанавливает здоровье цели и половину этого значения в энергии.";
+            case Unit.SpecialAbilityType.Teleport:
+                return "Телепортирует юнита на небольшое расстояние.";
+            case Unit.SpecialAbilityType.Grenade:
+                return "Бросает гранату, которая наносит урон по области.";
+            case Unit.SpecialAbilityType.SmokeScreen:
+                return "Создает дымовую завесу, которая скрывает юнитов.";
+            case Unit.SpecialAbilityType.Berserk:
+                return "Увеличивает урон в ущерб защите.";
+            case Unit.SpecialAbilityType.ReconScan:
+                return "Раскрывает врагов в области.";
+            case Unit.SpecialAbilityType.EMP:
+                return "Отключает технику врага на 1 ход.";
+            case Unit.SpecialAbilityType.Charge:
+                return "Удваивает скорость и очки движения на текущий ход.";
+            default:
+                return "Особая способность юнита.";
+        }
+    }
+
+    AbilityTargetType GetDefaultTargetType(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ShieldBarrier:
+            case Unit.SpecialAbilityType.Berserk:
+            case Unit.SpecialAbilityType.Charge:
+                return AbilityTargetType.Self;
+            case Unit.SpecialAbilityType.MedicHeal:
+                return AbilityTargetType.Ally;
+            case Unit.SpecialAbilityType.ArtilleryStrike:
+            case Unit.SpecialAbilityType.Grenade:
+            case Unit.SpecialAbilityType.EMP:
+                return AbilityTargetType.GroundCell;
+            case Unit.SpecialAbilityType.SmokeScreen:
+            case Unit.SpecialAbilityType.ReconScan:
+                return AbilityTargetType.GroundCell;
+            case Unit.SpecialAbilityType.Teleport:
+                return AbilityTargetType.Any;
+            default:
+                return AbilityTargetType.Self;
+        }
+    }
+
+    Color GetDefaultPanelColor(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ShieldBarrier:
+                return new Color(0f, 0.8f, 1f, 0.7f);     // Голубой для щита
+            case Unit.SpecialAbilityType.Berserk:
+                return new Color(0.8f, 0.8f, 0f, 0.7f);   // Желтый для баффов
+            case Unit.SpecialAbilityType.MedicHeal:
+                return new Color(0f, 1f, 0f, 0.7f);       // Зеленый для лечения
+            case Unit.SpecialAbilityType.EMP:
+            case Unit.SpecialAbilityType.Grenade:
+                return new Color(1f, 0.3f, 0.3f, 0.7f);   // Красный для дебаффов
+            case Unit.SpecialAbilityType.SmokeScreen:
+            case Unit.SpecialAbilityType.ReconScan:
+            case Unit.SpecialAbilityType.Teleport:
+                return new Color(0.8f, 0f, 1f, 0.7f);     // Фиолетовый для утилити
+            case Unit.SpecialAbilityType.Charge:
+                return new Color(1f, 0.5f, 0f, 0.7f);     // Оранжевый для рывка
+            default:
+                return new Color(0.5f, 0.5f, 0.5f, 0.7f); // Серый по умолчанию
+        }
+    }
+
+    string GetTargetTypeName(AbilityTargetType type)
+    {
+        switch (type)
+        {
+            case AbilityTargetType.Self: return "Себя";
+            case AbilityTargetType.Ally: return "Союзник";
+            case AbilityTargetType.Enemy: return "Враг";
+            case AbilityTargetType.AnyUnit: return "Любой юнит";
+            case AbilityTargetType.GroundCell: return "Клетка земли";
+            case AbilityTargetType.Any: return "Любая цель";
+            default: return "Неизвестно";
+        }
+    }
+
+    void ShowChargeTooltip()
+    {
+        if (chargeTooltipPanel == null || chargeTooltipTitle == null || chargeTooltipDescription == null) return;
+
+        chargeTooltipTitle.text = "РЫВОК";
+        string tooltipText = chargeTooltipText;
+
+        // Добавляем информацию об ограничении использования
+        if (selectedUnit != null)
+        {
+            int remainingCharges = selectedUnit.GetRemainingChargesInBattle();
+            if (remainingCharges >= 9999) // int.MaxValue возвращается при безлимите
+            {
+                tooltipText += $"\n\nОграничение в бою: без ограничений";
+            }
+            else
+            {
+                tooltipText += $"\n\nОсталось рывков в бою: {remainingCharges}";
+            }
+        }
+
+        chargeTooltipDescription.text = tooltipText;
+        chargeTooltipPanel.SetActive(true);
+    }
+
+    void HideChargeTooltip()
+    {
+        if (chargeTooltipPanel != null)
+            chargeTooltipPanel.SetActive(false);
+    }
+
+    void ShowSpecialAbilityTooltip(string title, string description, string details)
+    {
+        if (specialAbilityTooltipPanel == null ||
+            specialAbilityTooltipTitle == null ||
+            specialAbilityTooltipDescription == null)
+            return;
+
+        specialAbilityTooltipTitle.text = title;
+        specialAbilityTooltipDescription.text = description;
+
+        if (specialAbilityTooltipDetails != null)
+        {
+            specialAbilityTooltipDetails.text = details;
+        }
+
+        specialAbilityTooltipPanel.SetActive(true);
+    }
+
+    void HideSpecialAbilityTooltip()
+    {
+        if (specialAbilityTooltipPanel != null)
+            specialAbilityTooltipPanel.SetActive(false);
+    }
+
+    void UpdateButtonStates()
+    {
+        if (selectedUnit == null) return;
+
+        // Обновляем состояние кнопки рывка
+        if (chargeButton != null && chargeButton.gameObject.activeSelf)
+        {
+            bool canUseCharge = selectedUnit.CanUseCharge();
+            chargeButton.interactable = canUseCharge;
+
+            // Меняем цвет в зависимости от доступности
+            Image chargeImage = chargeButton.GetComponent<Image>();
+            if (chargeImage != null)
+            {
+                chargeImage.color = canUseCharge ? chargeButtonNormalColor : chargeButtonDisabledColor;
+            }
+        }
+
+        // Обновляем состояние кнопки специальной способности
+        if (specialAbilityButton != null && specialAbilityButton.gameObject.activeSelf)
+        {
+            bool canUseSpecial = selectedUnit.CanUseSpecialAbility();
+            specialAbilityButton.interactable = canUseSpecial;
+
+            // Меняем цвет в зависимости от доступности
+            Image specialImage = specialAbilityButton.GetComponent<Image>();
+            if (specialImage != null)
+            {
+                specialImage.color = canUseSpecial ? specialButtonNormalColor : specialButtonDisabledColor;
+            }
+        }
+    }
+
+    void UpdateAbilityInfo()
+    {
+        if (selectedUnit == null) return;
+
+        // Обновляем информацию о кулдауне и энергии для рывка
+        if (chargeCooldownText != null && chargeButton.gameObject.activeSelf)
+        {
+            int cooldownRemaining = selectedUnit.GetChargeCooldownRemaining();
+            if (cooldownRemaining > 0)
+            {
+                chargeCooldownText.text = $"КД: {cooldownRemaining}";
+                chargeCooldownText.gameObject.SetActive(true);
+            }
+            else
+            {
+                chargeCooldownText.gameObject.SetActive(false);
+            }
+        }
+
+        if (chargeEnergyText != null && chargeButton.gameObject.activeSelf)
+        {
+            int energyCost = selectedUnit.GetChargeEnergyCost();
+            chargeEnergyText.text = $"Э: {energyCost}";
+            chargeEnergyText.gameObject.SetActive(true);
+        }
+
+        // Обновляем информацию о кулдауне и энергии для специальной способности
+        if (specialAbilityCooldownText != null && specialAbilityButton.gameObject.activeSelf)
+        {
+            int cooldownRemaining = selectedUnit.GetSpecialAbilityCooldownRemaining();
+            if (cooldownRemaining > 0)
+            {
+                specialAbilityCooldownText.text = $"КД: {cooldownRemaining}";
+                specialAbilityCooldownText.gameObject.SetActive(true);
+            }
+            else
+            {
+                specialAbilityCooldownText.gameObject.SetActive(false);
+            }
+        }
+
+        if (specialAbilityEnergyText != null && specialAbilityButton.gameObject.activeSelf)
+        {
+            int energyCost = selectedUnit.GetSpecialAbilityEnergyCost();
+            specialAbilityEnergyText.text = $"Э: {energyCost}";
+            specialAbilityEnergyText.gameObject.SetActive(true);
+        }
+    }
+
+    void UpdateButtonColors()
+    {
+        // Настраиваем цвета кнопок
+        if (chargeButton != null)
+        {
+            Image chargeImage = chargeButton.GetComponent<Image>();
+            if (chargeImage != null)
+            {
+                chargeImage.color = chargeButtonNormalColor;
+            }
+        }
+
+        if (specialAbilityButton != null)
+        {
+            Image specialImage = specialAbilityButton.GetComponent<Image>();
+            if (specialImage != null)
+            {
+                specialImage.color = specialButtonNormalColor;
+            }
+        }
+    }
+
+    void OnChargeButtonClick()
+    {
+        // Предотвращаем дальнейшую обработку события
+        if (EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(null);
+        }
+
+        if (selectedUnit != null && selectedUnit.CanUseCharge())
+        {
+            // Используем рывок (эффект будет показан в методе UseChargeAbility класса Unit)
+            selectedUnit.UseChargeAbility();
+
+            UpdateButtonStates();
+            UpdateAbilityInfo();
+        }
+    }
+
+    void OnSpecialAbilityButtonClick()
+    {
+        // Предотвращаем дальнейшую обработку события
+        if (EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(null);
+        }
+
+        if (selectedUnit == null || !selectedUnit.CanUseSpecialAbility()) return;
+
+        Unit.SpecialAbilityType abilityType = selectedUnit.GetSpecialAbilityType();
+        SpecialAbilityTooltip tooltip = GetSpecialAbilityTooltip(abilityType);
+
+        // Рывок через отдельную кнопку
+        if (abilityType == Unit.SpecialAbilityType.Charge)
+        {
+            // Используем рывок (эффект будет показан в методе UseChargeAbility класса Unit)
+            selectedUnit.UseChargeAbility();
+
+            UpdateButtonStates();
+            UpdateAbilityInfo();
+            return;
+        }
+
+        // В зависимости от типа цели
+        switch (tooltip.targetType)
+        {
+            case AbilityTargetType.Self:
+                // Используем на себя
+                bool success = selectedUnit.UseSpecialAbility();
+                if (success)
+                {
+                    Debug.Log($"{selectedUnit.name} использовал специальную способность на себя!");
+                }
+                UpdateButtonStates();
+                UpdateAbilityInfo();
+                break;
+
+            case AbilityTargetType.Ally:
+            case AbilityTargetType.Enemy:
+            case AbilityTargetType.AnyUnit:
+            case AbilityTargetType.GroundCell:
+            case AbilityTargetType.Any:
+                // Запускаем выбор цели через UnitMovementController
+                UnitMovementController movementController = FindObjectOfType<UnitMovementController>();
+                if (movementController != null)
+                {
+                    movementController.StartAbilityTargetSelection(selectedUnit, abilityType);
+                }
+                break;
+        }
+    }
+
+    [ContextMenu("Add Default Tooltips")]
+    public void AddDefaultTooltips()
+    {
+        specialAbilityTooltips.Clear();
+
+        // Добавляем все типы способностей
+        foreach (Unit.SpecialAbilityType type in System.Enum.GetValues(typeof(Unit.SpecialAbilityType)))
+        {
+            if (type == Unit.SpecialAbilityType.None) continue;
+
+            SpecialAbilityTooltip tooltip = new SpecialAbilityTooltip
+            {
+                abilityType = type,
+                displayName = GetDefaultAbilityName(type),
+                description = GetDefaultAbilityDescription(type),
+                details = GetDefaultAbilityDetails(type),
+                targetType = GetDefaultTargetType(type),
+                effectDisplayType = GetDefaultEffectDisplayType(type),
+                panelColor = GetDefaultPanelColor(type),
+                effectDuration = GetDefaultEffectDuration(type),
+                effectTurns = GetDefaultEffectTurns(type)
+            };
+
+            specialAbilityTooltips.Add(tooltip);
+        }
+
+        // Инициализируем словарь заново
+        InitializeTooltipDictionary();
+    }
+
+    EffectDisplayType GetDefaultEffectDisplayType(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ShieldBarrier:
+                return EffectDisplayType.WhileShieldActive;
+            case Unit.SpecialAbilityType.Berserk:
+            case Unit.SpecialAbilityType.Charge:
+                return EffectDisplayType.UntilTurnEnd;
+            case Unit.SpecialAbilityType.SmokeScreen:
+            case Unit.SpecialAbilityType.ReconScan:
+                return EffectDisplayType.UntilNextTurn;
+            case Unit.SpecialAbilityType.MedicHeal:
+                return EffectDisplayType.Timed;
+            default:
+                return EffectDisplayType.None;
+        }
+    }
+
+    string GetDefaultAbilityDetails(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.ArtilleryStrike:
+                return "Радиус: 1 клетка (выбранная + все соседние)\nУрон: всем юнитам в радиусе";
+            case Unit.SpecialAbilityType.ShieldBarrier:
+                return "Поглощение: до 50 урона\nОсобенность: щит поглощает весь урон без овердемеджа";
+            case Unit.SpecialAbilityType.MedicHeal:
+                return "Лечение: 25 HP\nВосстановление энергии: 12 (половина от лечения)";
+            case Unit.SpecialAbilityType.Teleport:
+                return "Дистанция: 4 клетки";
+            case Unit.SpecialAbilityType.Grenade:
+                return "Радиус: 2 клетки\nУрон: 20";
+            case Unit.SpecialAbilityType.SmokeScreen:
+                return "Радиус: 3 клетки\nДлительность: 2 хода";
+            case Unit.SpecialAbilityType.Berserk:
+                return "Усиление урона: +50%\nДлительность: до конца хода";
+            case Unit.SpecialAbilityType.ReconScan:
+                return "Радиус: 4 клетки\nДлительность: 1 ход";
+            case Unit.SpecialAbilityType.EMP:
+                return "Радиус: 3 клетки\nДлительность: 1 ход";
+            case Unit.SpecialAbilityType.Charge:
+                return "Скорость: x2\nОчки движения: x2\nОсобенность: нельзя атаковать в этот ход\nОграничение в бою: 2 раза";
+            case Unit.SpecialAbilityType.Custom1:
+                return "Кастомная способность 1";
+            case Unit.SpecialAbilityType.Custom2:
+                return "Кастомная способность 2";
+            case Unit.SpecialAbilityType.Custom3:
+                return "Кастомная способность 3";
+            default:
+                return "Особые параметры способности";
+        }
+    }
+
+    private float GetDefaultEffectDuration(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.MedicHeal:
+                return 3f; // 3 секунды для иконки лечения
+            case Unit.SpecialAbilityType.ShieldBarrier:
+                return 0f; // Бессрочно, пока щит не разрушен
+            default:
+                return 5f; // 5 секунд по умолчанию
+        }
+    }
+
+    private int GetDefaultEffectTurns(Unit.SpecialAbilityType type)
+    {
+        switch (type)
+        {
+            case Unit.SpecialAbilityType.MedicHeal:
+                return 1; // 1 ход для иконки лечения
+            default:
+                return 0;
+        }
+    }
+
+    public void RefreshUI()
+    {
+        InitializeTooltipDictionary();
+        UpdateAbilityButtons();
+        UpdateButtonStates();
+        UpdateAbilityInfo();
+
+        // Также настраиваем тултипы
+        SetupSpecialAbilityTooltipForCurrentUnit();
+    }
+
+    public SpecialAbilityTooltip GetAbilityEffectSettings(Unit.SpecialAbilityType abilityType)
+    {
+        return GetSpecialAbilityTooltip(abilityType);
+    }
+
+    public void UpdateUIForUnit(Unit unit)
+    {
+        selectedUnit = unit;
+        OnSelectedUnitChanged();
+    }
+
+    void StartAllySelection(SpecialAbilityTooltip tooltip)
+    {
+        Debug.Log("Выберите союзника");
+        // Здесь должна быть логика показа UI для выбора союзника
+
+        // Временная заглушка для теста - выбираем первого союзника
+        Unit[] allUnits = FindObjectsOfType<Unit>();
+        foreach (Unit unit in allUnits)
+        {
+            if (unit != selectedUnit && unit.CompareTag(selectedUnit.tag) && unit.IsAlive())
+            {
+                bool success = selectedUnit.UseSpecialAbility(unit);
+                if (success)
+                {
+                    Debug.Log($"{selectedUnit.name} использовал {tooltip.displayName} на {unit.name}");
+                }
+                UpdateButtonStates();
+                UpdateAbilityInfo();
+                return;
+            }
+        }
+    }
+
+    void StartGroundCellSelection(SpecialAbilityTooltip tooltip)
+    {
+        Debug.Log("Выберите клетку");
+        // Здесь должна быть логика показа UI для выбора клетки
+
+        // Временная заглушка для теста - выбираем клетку перед юнитом
+        if (selectedUnit.currentCell != null)
+        {
+            Vector3 targetPosition = selectedUnit.currentCell.transform.position +
+                                    selectedUnit.transform.forward * 3f;
+
+            // Находим ближайшую клетку
+            HexCell[] allCells = FindObjectsOfType<HexCell>();
+            HexCell closestCell = null;
+            float closestDist = float.MaxValue;
+
+            foreach (HexCell cell in allCells)
+            {
+                float dist = Vector3.Distance(cell.transform.position, targetPosition);
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    closestCell = cell;
+                }
+            }
+
+            if (closestCell != null)
+            {
+                bool success = selectedUnit.UseSpecialAbility(null, closestCell.transform.position);
+                if (success)
+                {
+                    Debug.Log($"{selectedUnit.name} использовал {tooltip.displayName} на позицию {closestCell.transform.position}");
+                }
+            }
+        }
+
+        UpdateButtonStates();
+        UpdateAbilityInfo();
+    }
+}

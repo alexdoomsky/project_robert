@@ -1,0 +1,112 @@
+﻿using UnityEngine;
+using System.Collections.Generic;
+
+public class HexGridGenerator : MonoBehaviour
+{
+    [Header("Grid Settings")]
+    public int width = 10;
+    public int height = 8;
+    public float hexSize = 1f;
+    public GameObject hexPrefab;
+
+    [Header("Placement")]
+    [Tooltip("Поворот префаба по Y. Для pointy-top обычно 30.")]
+    public float prefabYaw = 30f;
+
+    [Tooltip("Генерировать автоматически при старте.")]
+    public bool generateOnStart = true;
+
+    private readonly Dictionary<HexCoordinates, HexCell> grid = new Dictionary<HexCoordinates, HexCell>();
+
+    // То, чего не хватало твоим скриптам:
+    public IReadOnlyDictionary<HexCoordinates, HexCell> Grid => grid;
+    public int Width => width;
+    public int Height => height;
+
+    private void Awake()
+    {
+        if (generateOnStart)
+            Generate();
+    }
+
+    public void Generate()
+    {
+        Clear();
+
+        if (hexPrefab == null)
+        {
+            Debug.LogError("HexGridGenerator: hexPrefab is not assigned.");
+            return;
+        }
+
+        for (int r = 0; r < height; r++)
+        {
+            for (int q = 0; q < width; q++)
+            {
+                CreateHex(q, r);
+            }
+        }
+
+        // Debug.Log($"Hex grid generated: {width}x{height} ({grid.Count} cells)");
+    }
+
+    private void CreateHex(int q, int r)
+    {
+        Vector3 pos = AxialToWorld(q, r);
+        Quaternion rot = Quaternion.Euler(0f, prefabYaw, 0f);
+
+        GameObject go = Instantiate(hexPrefab, pos, rot, transform);
+        go.name = $"Hex_{q}_{r}";
+
+        HexCell cell = go.GetComponent<HexCell>();
+        if (cell == null)
+            cell = go.AddComponent<HexCell>();
+
+        var coords = new HexCoordinates(q, r);
+
+        cell.coordinates = coords;
+        cell.offsetCoords = new Vector2Int(q, r); // важный момент: y==r, это “ряды” (верх-низ)
+
+        // Сброс полей на всякий случай (чтобы генерация не наследовала мусор от префаба)
+        cell.isWalkable = true;
+        cell.occupiedUnit = null;
+        cell.occupiedByObject = false;
+
+        grid[coords] = cell;
+    }
+
+    // pointy-top axial -> world (как у тебя было)
+    private Vector3 AxialToWorld(int q, int r)
+    {
+        float x = hexSize * Mathf.Sqrt(3f) * (q + r * 0.5f);
+        float z = hexSize * 1.5f * r;
+        return new Vector3(x, 0f, z);
+    }
+
+    public HexCell GetCell(HexCoordinates coords)
+    {
+        grid.TryGetValue(coords, out HexCell cell);
+        return cell;
+    }
+
+    // Это просили твои ошибки (TryGetCell):
+    public bool TryGetCell(HexCoordinates coords, out HexCell cell)
+    {
+        return grid.TryGetValue(coords, out cell);
+    }
+
+    // На случай если какие-то старые скрипты всё ещё зовут это:
+    public Dictionary<HexCoordinates, HexCell> GetGridDictionary()
+    {
+        return new Dictionary<HexCoordinates, HexCell>(grid);
+    }
+
+    public void Clear()
+    {
+        // чистим детей
+        for (int i = transform.childCount - 1; i >= 0; i--)
+            DestroyImmediate(transform.GetChild(i).gameObject);
+
+        grid.Clear();
+    }
+}

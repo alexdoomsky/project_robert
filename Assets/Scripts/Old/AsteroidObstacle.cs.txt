@@ -1,0 +1,66 @@
+using UnityEngine;
+
+public class AsteroidObstacle : MonoBehaviour
+{
+    [Header("HP")]
+    [SerializeField] private int maxHP = 30;
+
+    public int MaxHP => maxHP;
+    public int CurrentHP { get; private set; }
+
+    public HexCell CurrentCell { get; private set; }
+
+    private void Awake()
+    {
+        CurrentHP = Mathf.Max(1, maxHP);
+    }
+
+    public void SetCurrentCell(HexCell cell)
+    {
+        // освобождаем прошлую клетку (если переставили)
+        UnmarkCell();
+
+        CurrentCell = cell;
+        if (CurrentCell != null)
+        {
+            transform.position = CurrentCell.transform.position;
+
+            // Это НАСТОЯЩЕЕ препятствие
+            CurrentCell.occupiedByObject = true;
+            CurrentCell.ObjectBlocksMovement = true;
+        }
+    }
+
+    public void TakeDamage(int amount)
+    {
+        if (CurrentHP <= 0) return;
+
+        CurrentHP -= Mathf.Max(0, amount);
+        if (CurrentHP <= 0)
+        {
+            DestroyObstacle();
+        }
+    }
+
+    private void DestroyObstacle()
+    {
+        UnmarkCell();
+        Destroy(gameObject);
+    }
+
+    private void UnmarkCell()
+    {
+        if (CurrentCell == null) return;
+
+        // Освобождаем клетку
+        CurrentCell.occupiedByObject = false;
+        CurrentCell.ObjectBlocksMovement = true; // дефолт оставляем true для других объектов, можно не трогать
+        CurrentCell = null;
+    }
+
+    private void OnDestroy()
+    {
+        // если уничтожили извне
+        UnmarkCell();
+    }
+}

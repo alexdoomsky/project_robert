@@ -1,0 +1,106 @@
+﻿using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
+
+public class MineRandomPlacer : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] private HexGridGenerator hexGrid;
+
+    [Header("Mine Prefabs")]
+    [SerializeField] private MineTrap minePrefab;
+
+    [Header("Placement")]
+    [SerializeField] private int mineCount = 3;
+    [SerializeField] private int safeRowsFromTopAndBottom = 2;
+
+    [Tooltip("0 = можно вплотную. 1 = нельзя в соседней клетке. 2 = нельзя в радиусе 2 по гекс-дистанции.")]
+    [SerializeField] private int minHexDistanceBetweenMines = 1;
+
+    [SerializeField] private bool placeOnStart = true;
+
+    private readonly HashSet<HexCell> minedCells = new HashSet<HexCell>();
+
+    private void Start()
+    {
+        if (placeOnStart)
+            PlaceMines();
+    }
+
+    [ContextMenu("Place Mines")]
+    public void PlaceMines()
+    {
+        if (hexGrid == null || minePrefab == null)
+        {
+            Debug.LogError("MineRandomPlacer: missing references");
+            return;
+        }
+
+        var allCells = hexGrid.Grid.Values.Where(c => c != null).ToList();
+        if (allCells.Count == 0)
+        {
+            Debug.LogError("MineRandomPlacer: grid is empty");
+            return;
+        }
+
+        int height = hexGrid.Height;
+
+        // кандидаты: не в safe-rows, не заняты
+        List<HexCell> candidates = allCells.Where(cell =>
+        {
+            int r = cell.coordinates.r;
+            if (r < safeRowsFromTopAndBottom) return false;
+            if (r > (height - 1 - safeRowsFromTopAndBottom)) return false;
+
+            // не ставим на юнитов
+            if (cell.occupiedUnit != null) return false;
+
+            // не ставим на жёсткие препятствия
+            if (cell.occupiedByObject && cell.ObjectBlocksMovement) return false;
+
+            return true;
+        }).ToList();
+
+        if (candidates.Count == 0)
+        {
+            Debug.LogWarning("MineRandomPlacer: no candidates found");
+            return;
+        }
+
+        minedCells.Clear();
+
+        int placed = 0;
+        int attempts = 0;
+        int maxAttempts = mineCount * 200;
+
+        while (placed < mineCount && attempts < maxAttempts && candidates.Count > 0)
+        {
+            attempts++;
+
+            HexCell pick = candidates[Random.Range(0, candidates.Count)];
+
+            // проверка дистанции до других мин
+            if (minHexDistanceBetweenMines > 0)
+            {
+                bool tooClose = minedCells.Any(other => HexCoordinates.Distance(pick.coordinates, other.coordinates) <= minHexDistanceBetweenMines);
+                if (tooClose)
+                {
+                    candidates.Remove(pick);
+                    continue;
+                }
+            }
+
+            Vector3 pos = pick.transform.position;
+            MineTrap mine = Instantiate(minePrefab, pos, Quaternion.identity, transform);
+            mine.SetCurrentCell(pick);
+
+            minedCells.Add(pick);
+            placed++;
+
+            // убираем из кандидатов саму клетку
+            candidates.Remove(pick);
+        }
+
+        Debug.Log($"MineRandomPlacer: placed {placed}/{mineCount} mines");
+    }
+}

@@ -1,0 +1,126 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 306e890fa412ead468e1215cf5522ea2, type: 3}
+  m_Name: LocalZoneSpawnConfigV2
+  m_EditorClassIdentifier: Assembly-CSharp::LocalZoneSpawnConfigV2
+  profiles:
+  - zoneIndex: 0
+    useNodeType: 1
+    nodeType: 0
+    useThreat: 0
+    threat: 0
+    resourceClusters:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    loreEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    randomEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    combats:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    spawnExpeditionOnPlanet: 1
+  - zoneIndex: 0
+    useNodeType: 1
+    nodeType: 1
+    useThreat: 0
+    threat: 0
+    resourceClusters:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    loreEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    randomEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    combats:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    spawnExpeditionOnPlanet: 1
+  - zoneIndex: 0
+    useNodeType: 1
+    nodeType: 2
+    useThreat: 0
+    threat: 0
+    resourceClusters:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    loreEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    randomEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    combats:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    spawnExpeditionOnPlanet: 1
+  - zoneIndex: 0
+    useNodeType: 1
+    nodeType: 2
+    useThreat: 1
+    threat: 0
+    resourceClusters:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    loreEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    randomEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    combats:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    spawnExpeditionOnPlanet: 1
+  defaultProfile:
+    zoneIndex: 0
+    useNodeType: 0
+    nodeType: 0
+    useThreat: 0
+    threat: 0
+    resourceClusters:
+      chance: 1
+      minCount: 3
+      maxCount: 5
+    loreEvents:
+      chance: 1
+      minCount: 2
+      maxCount: 3
+    randomEvents:
+      chance: 1
+      minCount: 1
+      maxCount: 2
+    combats:
+      chance: 1
+      minCount: 1
+      maxCount: 1
+    spawnExpeditionOnPlanet: 1

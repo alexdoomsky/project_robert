@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7fc51a8a8bf2d34aac6722081eabb32, type: 3}
+  m_Name: Dash
+  m_EditorClassIdentifier: Assembly-CSharp::AbilityDefV2
+  abilityName: Dash
+  description: trade action for extra movement points and extra chance to dodge attack
+    (if any)
+  kind: 0
+  targetMode: 1
+  actionCost: 1
+  energyCost: 0
+  cooldownRounds: 0
+  minRange: 0
+  maxRange: 0
+  aoeRadius: 0
+  dashMoveMultiplier: 2
+  dashDodgeMultiplier: 2
+  dashDurationRounds: 1
+  barrierMaxHP: 0
+  barrierAbsorbPercent: 0
+  barrierDurationRounds: 0
+  barrierRegenPerRound: 0
+  healHP: 0
+  restoreEnergy: 0
+  artilleryDamage: 0
+  artilleryDelayRounds: 0
+  followCasterIfMoved: 0
+  scatterOnCasterDeath: 0
+  scatterRadiusOnDeath: 0
+  telegraphPrefab: {fileID: 0}
+  showAoePreview: 1
+  aoePreviewColor: {r: 1, g: 0.35, b: 0.2, a: 1}

@@ -1,0 +1,85 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+public class HexCell : MonoBehaviour
+{
+    // === Координаты ===
+    [SerializeField] private HexCoordinates coordinates;
+    public HexCoordinates Coordinates => coordinates;
+
+    // Для старого кода
+    public Vector2Int GridPosition => coordinates.Offset;
+
+    // === Занятость ===
+    public Unit occupiedUnit { get; private set; }
+    public GameObject occupiedByObject { get; private set; }
+
+    // === Блокировка движения ===
+    [SerializeField] private bool objectBlocksMovement;
+    public bool ObjectBlocksMovement
+    {
+        get => objectBlocksMovement;
+        set => objectBlocksMovement = value;
+    }
+
+    // === Подсветка ===
+    private SpriteRenderer outline;
+
+    private void Awake()
+    {
+        outline = GetComponentInChildren<SpriteRenderer>();
+    }
+
+    public void SetCoordinates(HexCoordinates coords)
+    {
+        coordinates = coords;
+    }
+
+    // === Occupancy API ===
+    public bool IsFreeForUnit()
+    {
+        return occupiedUnit == null && !objectBlocksMovement;
+    }
+
+    public void SetUnit(Unit unit)
+    {
+        occupiedUnit = unit;
+    }
+
+    public void ClearUnit()
+    {
+        occupiedUnit = null;
+    }
+
+    public void SetObject(GameObject obj, bool blocksMovement)
+    {
+        occupiedByObject = obj;
+        objectBlocksMovement = blocksMovement;
+    }
+
+    public void ClearObject()
+    {
+        occupiedByObject = null;
+        objectBlocksMovement = false;
+    }
+
+    // === Подсветка ===
+    public void SetHighlight(Color color)
+    {
+        if (outline == null) return;
+        outline.enabled = true;
+        outline.color = color;
+    }
+
+    public void ResetHighlight()
+    {
+        if (outline == null) return;
+        outline.enabled = false;
+    }
+
+    // === Соседи ===
+    public IEnumerable<HexCoordinates> GetNeighborCoords()
+    {
+        return coordinates.GetNeighbors();
+    }
+}

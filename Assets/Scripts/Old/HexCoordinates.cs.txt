@@ -1,0 +1,37 @@
+using UnityEngine;
+
+[System.Serializable]
+public struct HexCoordinates
+{
+    public int q;
+    public int r;
+
+    public HexCoordinates(int q, int r)
+    {
+        this.q = q;
+        this.r = r;
+    }
+
+    public static readonly HexCoordinates[] Directions =
+    {
+        new HexCoordinates( 1,  0),
+        new HexCoordinates( 1, -1),
+        new HexCoordinates( 0, -1),
+        new HexCoordinates(-1,  0),
+        new HexCoordinates(-1,  1),
+        new HexCoordinates( 0,  1),
+    };
+
+    public static int Distance(HexCoordinates a, HexCoordinates b)
+    {
+        int dq = Mathf.Abs(a.q - b.q);
+        int dr = Mathf.Abs(a.r - b.r);
+        int ds = Mathf.Abs((-a.q - a.r) - (-b.q - b.r));
+        return (dq + dr + ds) / 2;
+    }
+
+    public static HexCoordinates operator +(HexCoordinates a, HexCoordinates b)
+    {
+        return new HexCoordinates(a.q + b.q, a.r + b.r);
+    }
+}
